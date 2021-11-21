@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{% block title %}{% endblock %}</title>
+	<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+	<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/base.css') }}">
+	{% block styles %}{% endblock %}
+</head>
+<body>
+	{% block body %}{% endblock %}
+	<script type="text/javascript" src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
+	{% block js %}{% endblock %}
+</body>
+</html>
