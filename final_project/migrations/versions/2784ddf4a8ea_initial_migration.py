@@ -1,8 +1,8 @@
 """Initial migration
 
-Revision ID: 81c5db2ed801
+Revision ID: 2784ddf4a8ea
 Revises: 
-Create Date: 2021-11-21 20:08:34.493520
+Create Date: 2021-11-23 01:51:18.684222
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '81c5db2ed801'
+revision = '2784ddf4a8ea'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -41,12 +41,14 @@ def upgrade():
     )
     op.create_table('message',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('chat_id', sa.Integer(), nullable=False),
+    sa.Column('from_user_id', sa.Integer(), nullable=True),
+    sa.Column('chat_id', sa.Integer(), nullable=True),
     sa.Column('is_service', sa.Boolean(), nullable=False),
-    sa.Column('text', sa.String(length=4096), nullable=True),
-    sa.Column('datetime', sa.DateTime(), server_default=sa.text('utcnow()'), nullable=True),
+    sa.Column('text', sa.String(length=4096), nullable=False),
+    sa.Column('datetime', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
     sa.ForeignKeyConstraint(['chat_id'], ['chat.id'], ),
-    sa.PrimaryKeyConstraint('id', 'chat_id', name='chat_message_pk')
+    sa.ForeignKeyConstraint(['from_user_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###
 

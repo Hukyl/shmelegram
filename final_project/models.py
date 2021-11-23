@@ -4,25 +4,11 @@ from hashlib import sha256
 
 from sqlalchemy.sql import func
 from sqlalchemy.orm import validates, relationship
-from sqlalchemy.schema import CheckConstraint, PrimaryKeyConstraint
+from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 
 from final_project import db
-
-
-class ChatKind(Enum):
-    """
-    Enumeration of chat types.
-    The value of chat type is the max number of members
-        the chat can hold.
-    
-    Attributes:
-        GROUP (int): group chat type
-        PRIVATE (int): private chat type
-    """
-
-    PRIVATE = 2
-    GROUP = 50
+from final_project.config import ChatKind
 
 
 chat_membership = db.Table(
@@ -55,21 +41,20 @@ class User(db.Model):
     def validate_password(self, key: str, value: str) -> str:
         if not (6 < len(value) < 15):
             raise ValueError('invalid password length')
-        return sha256(value).hexdigest()
+        return sha256(value.encode('utf-8')).hexdigest()
 
 
 class Message(db.Model):
     __tablename__ = 'message'
 
-    id = db.Column(db.Integer)
+    id = db.Column(db.Integer, primary_key=True)
+    from_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     from_user = relationship('User', uselist=False)
     chat_id = db.Column(db.Integer, db.ForeignKey('chat.id'))
     is_service = db.Column(db.Boolean, nullable=False, default=False)
-    text = db.Column(db.String(4096), nullable=True)
-    datetime = db.Column(db.DateTime(), server_default=func.utcnow())
-
-    __table_args__ = (
-        PrimaryKeyConstraint('id', 'chat_id', name='chat_message_pk'),
+    text = db.Column(db.String(4096), nullable=False)
+    datetime = db.Column(
+        db.DateTime(), server_default=func.current_timestamp()
     )
 
 
@@ -78,34 +63,23 @@ class Chat(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     kind = db.Column(db.Enum(ChatKind))
-    _member_limit = db.Column(db.Integer)
     title = db.Column(db.String(50), nullable=True)
-    members = relationship(
-        'User', secondary=chat_membership, lazy='subquery', 
-        backref=db.backref('chats', lazy=True)
-    )
+    members = relationship('User', secondary=chat_membership, backref='chats')
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',
         cascade="all, delete-orphan", passive_deletes=True        
     )
 
-    def __init__(
-                self, kind: ChatKind, *, title: str = None, 
-                members: list[User] = None
-            ):
+    def __init__(self, *, kind: ChatKind, title: str = None):
         if kind is ChatKind.PRIVATE and title:
             raise ValueError('unable to set title in private chat')
         elif kind is not ChatKind.PRIVATE and not title:
             raise ValueError('unable to create non-private chat without title')
-        self.kind = kind
-        self.title = title
-        if not members:
-            members = []
-        self.members = []
+        super().__init__(kind=kind, title=title)
 
     @hybrid_property
     def member_limit(self) -> int:
-        return self._member_limit
+        return self.kind.value
 
     @hybrid_property
     def member_count(self) -> int:
@@ -114,9 +88,14 @@ class Chat(db.Model):
     @hybrid_method
     def add_member(self, user: User) -> True:
         member_limit = self.member_limit
-        if self.members_count >= member_limit:
+        if self.member_count >= member_limit:
             raise ValueError(
                 f'member count exceeds member limit ({member_limit})'
             )
         self.members.append(user)
+        return True
+
+    @hybrid_method
+    def add_message(self, message: Message) -> True:
+        self.messages.append(message)
         return True
