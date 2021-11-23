@@ -1,5 +1,4 @@
 from __future__ import annotations
-from enum import Enum
 from hashlib import sha256
 
 from sqlalchemy.sql import func
@@ -7,8 +6,8 @@ from sqlalchemy.orm import validates, relationship
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 
-from final_project import db
-from final_project.config import ChatKind
+from shmelegram import db
+from shmelegram.config import ChatKind
 
 
 chat_membership = db.Table(
