@@ -1,0 +1,18 @@
+* {
+    padding: 0;
+    margin: 0;
+}
+
+body {
+    background-color: #FFBA08;
+  }
+  
+
+.background-yellow {background-color: #FFBA08;}
+.bg-dark, .background-dark {background-color: #1C3144;}
+.background-red {background-color: #D00000;}
+.background-gray {background-color: #A2AEBB;}
+.background-blue {background-color: #3F88C5;}
+
+
+.bg-dark { background-color: #1C3144; }

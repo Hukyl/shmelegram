@@ -34,3 +34,6 @@ class ChatKind(Enum):
 
     PRIVATE = 2
     GROUP = 50
+
+
+MIGRATION_DIR = 'shmelegram/migrations'

@@ -8,6 +8,7 @@ from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 
 from shmelegram import db
 from shmelegram.config import ChatKind
+from shmelegram import utils
 
 
 chat_membership = db.Table(
@@ -30,15 +31,19 @@ class User(db.Model):
         ), 
     )
 
+    @hybrid_method
+    def check_password(self, password: str) -> bool:
+        return sha256(password.encode('utf-8')).hexdigest() == self.password
+
     @validates('username')
     def validate_username(self, key: str, value: str) -> str:
-        if len(value) <= 4:
-            raise ValueError('username too short')
+        if not utils.validate_username(value):
+            raise ValueError('invalid username length')
         return value
 
     @validates('password')
     def validate_password(self, key: str, value: str) -> str:
-        if not (6 < len(value) < 15):
+        if not utils.validate_password(value):
             raise ValueError('invalid password length')
         return sha256(value.encode('utf-8')).hexdigest()
 
@@ -82,7 +87,7 @@ class Chat(db.Model):
 
     @hybrid_property
     def member_count(self) -> int:
-        return db.object_session(self).query(User).with_parent(self).count()
+        return User.query.with_parent(self).count()
 
     @hybrid_method
     def add_member(self, user: User) -> True:

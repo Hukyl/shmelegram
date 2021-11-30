@@ -1,0 +1,11 @@
+#aboutCarousel > .carousel-inner > .carousel-item {  
+  height: 90vh;    
+}
+
+#aboutCarousel > .carousel-inner > .carousel-item > img {
+  position: relative;
+  top: 50%;
+  transform: translateY(-70%);      
+  width: 50%;
+  margin: auto;
+}

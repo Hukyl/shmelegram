@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+
+{% block title %} - Home{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+{% endblock %}
+
+
+{% block body %}
+{% include 'nav.html' %}
+<div id="aboutCarousel" class="carousel carousel-dark slide h-25" data-bs-ride="carousel">
+  <div class="carousel-indicators">
+    <button 
+      type="button" data-bs-target="#aboutCarousel" data-bs-slide-to="0" 
+      class="active" aria-current="true" aria-label="Slide 1"
+    ></button>
+    <button 
+      type="button" data-bs-target="#aboutCarousel" data-bs-slide-to="1" 
+      aria-label="Slide 2"
+    ></button>
+    <button 
+      type="button" data-bs-target="#aboutCarousel" 
+      data-bs-slide-to="2" aria-label="Slide 3"
+    ></button>
+  </div>
+  <div class="carousel-inner">
+    <div class="carousel-item active">
+      <img 
+        src="{{ url_for('static', filename='images/logo2-nobg.png') }}" 
+        class="d-block rounded" alt="What is Shmelegram?"
+      >
+      <div class="carousel-caption d-none d-md-block">
+        <h1>Shmelegram is a web messenger prototype</h1>
+        <p>Definitely not a copy of Telegram</p>
+      </div>
+    </div>
+    <div class="carousel-item">
+      <img 
+        src="{{ url_for('static', filename='images/frameworks-logos-nobg.png') }}" 
+        class="d-block rounded" alt="Frameworks' and libraries' logos"
+      >
+      <div class="carousel-caption d-none d-md-block">
+        <h1>Made with various frameworks and libraries</h1>
+        <p>Flask, SocketIO, SQLAlchemy, Flask-Migrate, Bootstrap5 and bare hands</p>
+      </div>
+    </div>
+    <div class="carousel-item">
+      <img 
+        src="{{ url_for('static', filename='images/registration-nobg.png') }}" 
+        class="d-block rounded" alt="Register now!"
+      >
+      <div class="carousel-caption d-none d-md-block">
+        <h3>
+          <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">Register</a> now!
+        </h3>
+      </div>
+    </div>
+  </div>
+  <button 
+    class="carousel-control-prev" type="button" 
+    data-bs-target="#aboutCarousel" data-bs-slide="prev"
+  >
+    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+    <span class="visually-hidden">Previous</span>
+  </button>
+  <button 
+    class="carousel-control-next" type="button" 
+    data-bs-target="#aboutCarousel" data-bs-slide="next"
+  >
+    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+    <span class="visually-hidden">Next</span>
+  </button>
+</div>
+{% endblock %}
+
+{% block js %}{% endblock %}
