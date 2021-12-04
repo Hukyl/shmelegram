@@ -3,7 +3,7 @@ python:
   - "3.9"
 
 install:
-  - pip install --user poetry
+  - pip install poetry
   - poetry install
 
 script:
