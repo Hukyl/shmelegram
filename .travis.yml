@@ -1,0 +1,10 @@
+language: python
+python:
+  - "3.9.5"
+
+install:
+  - pip install --user poetry
+  - poetry install
+
+script:
+  - poetry run pytest
