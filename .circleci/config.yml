@@ -1,0 +1,22 @@
+version: 2.1
+jobs:
+  run_tests:
+    docker:
+      - image: circleci/python:3.9.5
+    steps:
+      - checkout
+      - run:
+        name: Install Python Dependencies
+        command: |
+          echo 'export PATH=~$PATH:~/.local/bin' >> $BASH_ENV && source $BASH_ENV
+          pip install --user poetry
+          poetry install
+      - run:
+        name: Run the tests
+        command: |
+          poetry run pytest
+workflows:
+  build_and_test:
+    jobs:
+      - run_tests
+          

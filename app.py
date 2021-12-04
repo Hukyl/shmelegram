@@ -1,4 +1,8 @@
 from shmelegram import app
 
-if __name__ == '__main__':
+
+def main():
     app.run()
+
+if __name__ == '__main__':
+    main()
