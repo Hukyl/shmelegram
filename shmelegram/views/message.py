@@ -2,8 +2,8 @@ from typing import Any
 
 from flask_socketio import send, emit, join_room, leave_room
 
-from shmelegram import socketio
 from shmelegram.models import User, Chat, Message
+from shmelegram import socketio
 
 
 # Sending messages data object must contain 'chat_id', 'user_id'

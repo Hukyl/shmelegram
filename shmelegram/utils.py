@@ -1,23 +1,13 @@
 import string
 
 
-valid_chars = set(string.printable) - set(string.whitespace)
-
-
-def validate_credential_characters(chars: str) -> bool:
-    """
-    Validate credentials characters.
-    Characters must contain at least one uppercase
-
-    Args:
-        chars (str): [characters to check]
-
-    Returns:
-        bool: [are all characters valid]
-    """
+def validate_password(password: str) -> bool:
+    valid_chars = set(string.printable) - set(string.whitespace)
+    if not (password and 6 < len(password) < 15):
+        return False
     # An iterative approach is twice as fast as with `all` and `any`
     any_uppercase = any_special = any_lowercase = any_digit = False
-    for symbol in chars:
+    for symbol in password:
         if symbol not in valid_chars:
             return False
         elif symbol.isupper():
@@ -33,12 +23,7 @@ def validate_credential_characters(chars: str) -> bool:
 
 
 def validate_username(username: str) -> bool:
-    return username and validate_credential_characters(
-        username
+    valid_chars = string.ascii_letters + string.digits 
+    return username and all(
+        x in valid_chars for x in username
     ) and 4 < len(username) < 30
-
-
-def validate_password(password: str) -> bool:
-    return password and validate_credential_characters(
-        password
-    ) and 6 < len(password) < 15

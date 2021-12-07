@@ -9,4 +9,4 @@ bp = Blueprint('chat', __name__, url_prefix='/')
 @bp.route('', methods=('GET', ))
 @logged_in
 def index():
-    return render_template('chat.html', user_id=session['user_id'])
+    return render_template('chat.html', user_id=session.get('user_id'))

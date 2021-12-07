@@ -13,8 +13,8 @@ from shmelegram import utils
 
 chat_membership = db.Table(
     'chat_membership', db.Model.metadata,
-    db.Column('chat_id', db.Integer, db.ForeignKey('chat.id')),
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id'))
+    db.Column('chat_id', db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")),
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id', ondelete="CASCADE"))
 )
 
 
@@ -27,7 +27,7 @@ class User(db.Model):
 
     __table_args__ = (
         CheckConstraint(
-            'char_length(username) > 4', name='username_min_length'
+            'length(username) > 4', name='username_min_length'
         ), 
     )
 
@@ -48,36 +48,25 @@ class User(db.Model):
         return sha256(value.encode('utf-8')).hexdigest()
 
 
-class Message(db.Model):
-    __tablename__ = 'message'
-
-    id = db.Column(db.Integer, primary_key=True)
-    from_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    from_user = relationship('User', uselist=False)
-    chat_id = db.Column(db.Integer, db.ForeignKey('chat.id'))
-    is_service = db.Column(db.Boolean, nullable=False, default=False)
-    text = db.Column(db.String(4096), nullable=False)
-    datetime = db.Column(
-        db.DateTime(), server_default=func.current_timestamp()
-    )
-
-
 class Chat(db.Model):
     __tablename__ = 'chat'
 
     id = db.Column(db.Integer, primary_key=True)
     kind = db.Column(db.Enum(ChatKind))
     title = db.Column(db.String(50), nullable=True)
-    members = relationship('User', secondary=chat_membership, backref='chats')
+    members = relationship(
+        'User', secondary=chat_membership, backref='chats', 
+        passive_deletes=True
+    )
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',
-        cascade="all, delete-orphan", passive_deletes=True        
+        cascade="all, delete", passive_deletes=True        
     )
 
     def __init__(self, *, kind: ChatKind, title: str = None):
         if kind is ChatKind.PRIVATE and title:
             raise ValueError('unable to set title in private chat')
-        elif kind is not ChatKind.PRIVATE and not title:
+        elif kind is ChatKind.GROUP and not title:
             raise ValueError('unable to create non-private chat without title')
         super().__init__(kind=kind, title=title)
 
@@ -103,3 +92,22 @@ class Chat(db.Model):
     def add_message(self, message: Message) -> True:
         self.messages.append(message)
         return True
+
+    def __str__(self) -> str:
+        return f"Chat(kind={self.kind.name})"
+
+
+class Message(db.Model):
+    __tablename__ = 'message'
+
+    id = db.Column(db.Integer, primary_key=True)
+    from_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    from_user = relationship('User', uselist=False)
+    chat_id = db.Column(
+        db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")
+    )
+    is_service = db.Column(db.Boolean, nullable=False, default=False)
+    text = db.Column(db.String(4096), nullable=False)
+    datetime = db.Column(
+        db.DateTime(), server_default=func.current_timestamp()
+    )

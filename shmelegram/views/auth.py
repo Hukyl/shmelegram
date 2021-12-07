@@ -1,7 +1,8 @@
 from functools import wraps
 
 from flask import (
-    Blueprint, flash, redirect, render_template, request, session, url_for
+    Blueprint, flash, redirect, render_template, request, 
+    session, url_for, g
 )
 
 from shmelegram.models import User
@@ -67,3 +68,10 @@ def login():
             error = "Passwords do not match"
         flash(error, 'error')
     return render_template('auth/login.html', form=request.form)
+
+
+@bp.before_app_request
+def load_user():
+    user_id = session.get("user_id") 
+    if user_id:
+        g.user = User.query.get(user_id)
