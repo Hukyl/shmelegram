@@ -13,7 +13,7 @@ server = os.environ.get('MYSQL_SERVER')
 database = os.environ.get('MYSQL_DATABASE')
 
 MIGRATION_DIR = 'shmelegram/migrations'
-TESTING = os.environ.get('FLASK_TESTING', False)
+TESTING = os.environ.get('FLASK_TESTING', '').strip() == 'True'
 
 
 class Config:
