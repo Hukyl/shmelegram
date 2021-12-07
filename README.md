@@ -16,7 +16,7 @@ source env/bin/activate
 
 - ### Install the requirements:
 ```
-pip install -r requirements.txt
+pip install .
 ```
 - ### Configure MySQL database
 
