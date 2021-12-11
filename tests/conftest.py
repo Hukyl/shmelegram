@@ -21,3 +21,10 @@ def db():
     db.session = db.create_scoped_session()
     yield db
     db.drop_all()
+
+
+@pytest.fixture
+def user():
+    from shmelegram.models import User
+
+    return User(username='username', password='pa$$Word123')

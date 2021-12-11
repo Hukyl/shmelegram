@@ -24,6 +24,10 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(30), unique=True, nullable=False)
     password = db.Column(db.String(64), nullable=False)
+    last_online = db.Column(
+        db.DateTime(), server_default=func.now(), 
+        nullable=True, onupdate=func.current_timestamp()
+    )  # None means online now
 
     __table_args__ = (
         CheckConstraint(
@@ -102,12 +106,21 @@ class Message(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     from_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    from_user = relationship('User', uselist=False)
+    from_user = relationship('User', uselist=False, foreign_keys=[from_user_id])
     chat_id = db.Column(
         db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")
     )
     is_service = db.Column(db.Boolean, nullable=False, default=False)
+    seen_user_ids = db.Column(db.Integer, db.ForeignKey('user.id'))
+    seen_by = relationship('User', uselist=True, foreign_keys=[seen_user_ids])
     text = db.Column(db.String(4096), nullable=False)
-    datetime = db.Column(
+    created_at = db.Column(
         db.DateTime(), server_default=func.current_timestamp()
     )
+
+    @hybrid_method
+    def add_view(self, user: User) -> True:
+        if user not in self.chat.members:
+            raise ValueError('cannot add view by non-member user')
+        self.seen_by.append(user)
+        return True
