@@ -1,8 +1,10 @@
 from __future__ import annotations
+from datetime import datetime as dt
 from hashlib import sha256
+from typing import Any, List, NoReturn
 
 from sqlalchemy.sql import func
-from sqlalchemy.orm import validates, relationship
+from sqlalchemy.orm import load_only, validates, relationship
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 
@@ -13,12 +15,73 @@ from shmelegram import utils
 
 chat_membership = db.Table(
     'chat_membership', db.Model.metadata,
-    db.Column('chat_id', db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")),
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id', ondelete="CASCADE"))
+    db.Column(
+        'chat_id', db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")
+    ),
+    db.Column(
+        'user_id', db.Integer, db.ForeignKey('user.id', ondelete="CASCADE")
+    )
+)
+
+message_views = db.Table(
+    'message_views', db.Model.metadata, 
+    db.Column(
+        'user_id', db.Integer, db.ForeignKey('user.id', ondelete="CASCADE")
+    ), 
+    db.Column(
+        'message_id', db.Integer, 
+        db.ForeignKey('message.id', ondelete="CASCADE")
+    )
 )
 
 
-class User(db.Model):
+class BaseMixin:
+    @classmethod
+    def exists(cls, id_: int) -> bool:
+        """
+        Check if model with this id exists
+
+        Args:
+            id_ (int)
+
+        Returns:
+            bool
+        """
+        return db.session.query(
+            cls.query.filter(cls.id == id_).exists()
+        ).scalar()
+
+    def update(self, data: dict[str, Any]) -> NoReturn:
+        for k, v in data.items():
+            setattr(self, k, v)
+        db.session.add(self)
+
+    @classmethod
+    def get(cls, id_: int) -> BaseMixin:        
+        """
+        Get model by some id
+
+        Args:
+            id_ (int): id of model to be retrieved
+
+        Raises:
+            ValueError: if model with such id does not exist.
+                Use `exists()` to check if the id exists
+
+        Returns:
+            db.Model: model
+        """
+        model = cls.query.get(id_)
+        if model is None:
+            raise ValueError(f'{cls.__name__} with id {id_} does not exist')
+        return model
+
+    def delete(self):
+        db.session.delete(self)
+        db.session.flush()
+
+
+class User(db.Model, BaseMixin):
     __tablename__ = 'user'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -34,6 +97,24 @@ class User(db.Model):
             'length(username) > 4', name='username_min_length'
         ), 
     )
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + (
+            f"(id={self.id}, username={self.username!r})"
+        )
+
+    def update_last_online(self) -> NoReturn:
+        self.last_online = dt.utcnow()
+        db.session.add(self)
+
+    @classmethod
+    def get_by_username(cls, username: str, /) -> bool:
+        user = cls.query.filter(cls.username == username).first()
+        if user is None:
+            raise ValueError(
+                f"{cls.__name__} with username {username!r} does not exist"
+            )
+        return user
 
     @hybrid_method
     def check_password(self, password: str) -> bool:
@@ -52,7 +133,7 @@ class User(db.Model):
         return sha256(value.encode('utf-8')).hexdigest()
 
 
-class Chat(db.Model):
+class Chat(db.Model, BaseMixin):
     __tablename__ = 'chat'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -64,7 +145,7 @@ class Chat(db.Model):
     )
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',
-        cascade="all, delete", passive_deletes=True        
+        cascade="all, delete", passive_deletes=True
     )
 
     def __init__(self, *, kind: ChatKind, title: str = None):
@@ -74,6 +155,15 @@ class Chat(db.Model):
             raise ValueError('unable to create non-private chat without title')
         super().__init__(kind=kind, title=title)
 
+    @validates('members')
+    def validate_member(self, key, user: User):
+        member_limit = self.member_limit
+        if self.member_count >= member_limit:
+            raise ValueError(
+                f'member count exceeds member limit ({member_limit})'
+            )
+        return user
+
     @hybrid_property
     def member_limit(self) -> int:
         return self.kind.value
@@ -82,45 +172,83 @@ class Chat(db.Model):
     def member_count(self) -> int:
         return User.query.with_parent(self).count()
 
-    @hybrid_method
     def add_member(self, user: User) -> True:
-        member_limit = self.member_limit
-        if self.member_count >= member_limit:
-            raise ValueError(
-                f'member count exceeds member limit ({member_limit})'
-            )
         self.members.append(user)
         return True
 
-    @hybrid_method
-    def add_message(self, message: Message) -> True:
-        self.messages.append(message)
-        return True
+    def get_unread_messages(self, user: User) -> List[Message]:
+        """
+        Get unread messages by a user.
+        If user not a member of a chat, raise ValueError
 
-    def __str__(self) -> str:
-        return f"Chat(kind={self.kind.name})"
+        Args:
+            user (User): user to be checked
+
+        Returns:
+            List[Message]
+        """
+        if user not in self.members:
+            raise ValueError('cannot get messages by non-member user')
+        return self.messages.filter(~Message.seen_by.has(user))\
+            .options(load_only("id")).all()
+
+    @classmethod
+    def get_by_title(cls, title: str, /) -> bool:
+        chat = cls.query.filter(cls.title == title).first()
+        if chat is None:
+            raise ValueError(
+                f'{cls.__name__} with title {title!r} does not exist'
+            )
+        return chat
+
+    @classmethod
+    def startwith(cls, name: str = '', /) -> bool:
+        return cls.query.filter(
+            cls.title.startswith(name)
+        ).all()
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + (
+            f"(id={self.id}, kind={self.kind.name})"
+        )
 
 
-class Message(db.Model):
+class Message(db.Model, BaseMixin):
     __tablename__ = 'message'
 
     id = db.Column(db.Integer, primary_key=True)
     from_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    from_user = relationship('User', uselist=False, foreign_keys=[from_user_id])
+    from_user = relationship(
+        'User', uselist=False, foreign_keys=[from_user_id]
+    )
     chat_id = db.Column(
         db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")
     )
     is_service = db.Column(db.Boolean, nullable=False, default=False)
-    seen_user_ids = db.Column(db.Integer, db.ForeignKey('user.id'))
-    seen_by = relationship('User', uselist=True, foreign_keys=[seen_user_ids])
+    seen_by = relationship(
+        'User', secondary=message_views, lazy='dynamic', 
+        passive_deletes=True,
+    )
     text = db.Column(db.String(4096), nullable=False)
     created_at = db.Column(
         db.DateTime(), server_default=func.current_timestamp()
     )
 
+    @validates('seen_by', include_removes=True)
+    def validate_view(self, key, user: User, is_remove: bool):
+        if is_remove:
+            raise ValueError('not allowed to remove view')
+        elif user not in self.chat.members:
+            raise ValueError('cannot add view by non-member user')
+        
+        return user      
+
     @hybrid_method
     def add_view(self, user: User) -> True:
-        if user not in self.chat.members:
-            raise ValueError('cannot add view by non-member user')
         self.seen_by.append(user)
         return True
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + (
+            f"(id={self.id}, chat={self.chat!r}, from_user={self.from_user!r})"
+        )

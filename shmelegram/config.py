@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import IntEnum
 
 from dotenv import load_dotenv
 
@@ -19,6 +19,7 @@ TESTING = os.environ.get('FLASK_TESTING', '').strip() == 'True'
 class Config:
     DEBUG = True
     SECRET_KEY = os.urandom(32)
+    MESSAGE_PAGE_SIZE = 50
     if TESTING:
         SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     else:
@@ -27,7 +28,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
-class ChatKind(Enum):
+class ChatKind(IntEnum):
     """
     Enumeration of chat types.
     The value of chat type is the max number of members
