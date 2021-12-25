@@ -1,9 +1,44 @@
 {% extends 'base.html' %}
-{% block styles %} {% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">{% endblock %}
 
 {% block body %}
 {% include 'nav.html' %}
-
+{% include 'flash_messages.html' %}
+<form 
+    id="main" method="post" action="{{ url_for('auth.register') }}" 
+    class="row col-3 bg-dark text-light" novalidate autocomplete="off"
+>
+    <div class="col-12 justify-content-center" id="form-name">
+        Register
+    </div>
+    <div class="col-12">
+        <label for="username" class="form-label">Username</label>
+        <input 
+            type="text" name="username" class="form-control" 
+            id="username" placeholder="Your username..." required
+            value="{{ form.username }}" aria-describedby="usernameHelp"
+        >
+        <small id="usernameHelp" class="form-text text-muted text-white">
+            Only letters, digits and punctuation. From 5 to 29 chars.
+        </small>        
+    </div>
+    <div class="col-12">
+        <label for="password" class="form-label">Password</label>
+        <input 
+            type="text" name="password" class="form-control" 
+            id="password" placeholder="Your password..." required
+            aria-describedby="passwordHelp"
+        >
+        <small id="passwordHelp" class="form-text text-muted text-white">
+            At least one upper, one lower, one punctuation and one digit. From 7 to 14 chars.
+        </small>  
+    </div>
+    <div id="submit-div">
+        <input type="submit" value="Submit" class="btn btn-primary btn-lg" id="submit">
+    </div>
+</div>
 {% endblock %}
 
-{% block js %}{% endblock %}
+{% block js %}
+<script type="text/javascript" src="{{ url_for('static', filename='js/register.js') }}"></script>
+{% endblock %}

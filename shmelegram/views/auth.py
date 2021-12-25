@@ -31,20 +31,19 @@ def register():
             error = "Invalid username"
         elif not utils.validate_password(password):
             error = "Invalid password"
-        elif db.session.query(User.id).filter_by(
-                username=username).first() is not None:
+        elif User.username_exists(username):
             error = "User with this username alraedy exists."
         if not error:
             try:
                 user = User(username=username, password=password)
-                db.session.add(user)
+                user.save()
             except Exception:
                 error = 'Unexpected error occurred, try again later'
             else:
                 flash('User successfully created', 'success')
                 return redirect(url_for('auth.login'))
-        flash(error, 'error')
-    return render_template('auth/register.html', form=request.form)
+        flash(error, 'danger')
+    return render_template('auth/register.html', form=request.form, active_page='auth')
 
 
 @bp.route('/login', methods=('GET', 'POST'))
@@ -57,21 +56,20 @@ def login():
             error = "Invalid username"
         elif not password:
             error = "Invalid password"
-        elif db.session.query(User.id).filter_by(
-                username=username).first() is None:
+        elif not User.username_exists(username):
             error = "No user with such username exists"
         if not error:
-            user = User.query.filter_by(username=username).first()
+            user = User.get_by_username(username)
             if user.check_password(password):
                 session['user_id'] = user.id
-                return redirect(url_for('home.index'))
+                return redirect(url_for('chat.index'))
             error = "Passwords do not match"
-        flash(error, 'error')
-    return render_template('auth/login.html', form=request.form)
+        flash(error, 'danger')
+    return render_template('auth/login.html', form=request.form, active_page='auth')
 
 
 @bp.before_app_request
 def load_user():
     user_id = session.get("user_id") 
     if user_id:
-        g.user = User.query.get(user_id)
+        g.user = User.get(user_id)

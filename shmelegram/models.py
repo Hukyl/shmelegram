@@ -1,10 +1,10 @@
 from __future__ import annotations
 from datetime import datetime as dt
 from hashlib import sha256
-from typing import Any, List, NoReturn
+from typing import Any, NoReturn, List
 
 from sqlalchemy.sql import func
-from sqlalchemy.orm import load_only, validates, relationship
+from sqlalchemy.orm import load_only, validates, relationship, backref
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 
@@ -80,6 +80,10 @@ class BaseMixin:
         db.session.delete(self)
         db.session.flush()
 
+    def save(self):
+        db.session.add(self)
+        db.session.flush()
+
 
 class User(db.Model, BaseMixin):
     __tablename__ = 'user'
@@ -116,6 +120,11 @@ class User(db.Model, BaseMixin):
             )
         return user
 
+    @classmethod
+    def username_exists(cls, username: str, /) -> bool:
+        return db.session.query(User.id).filter_by(
+                username=username).first() is not None
+
     @hybrid_method
     def check_password(self, password: str) -> bool:
         return sha256(password.encode('utf-8')).hexdigest() == self.password
@@ -123,13 +132,13 @@ class User(db.Model, BaseMixin):
     @validates('username')
     def validate_username(self, key: str, value: str) -> str:
         if not utils.validate_username(value):
-            raise ValueError('invalid username length')
+            raise ValueError('invalid username')
         return value
 
     @validates('password')
     def validate_password(self, key: str, value: str) -> str:
         if not utils.validate_password(value):
-            raise ValueError('invalid password length')
+            raise ValueError('invalid password')
         return sha256(value.encode('utf-8')).hexdigest()
 
 
@@ -140,8 +149,8 @@ class Chat(db.Model, BaseMixin):
     kind = db.Column(db.Enum(ChatKind))
     title = db.Column(db.String(50), nullable=True)
     members = relationship(
-        'User', secondary=chat_membership, backref='chats', 
-        passive_deletes=True
+        'User', secondary=chat_membership, passive_deletes=True,
+        backref=backref('chats', lazy='dynamic')
     )
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',

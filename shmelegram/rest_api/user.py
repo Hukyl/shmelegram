@@ -1,4 +1,5 @@
 from flask import request, url_for
+from sqlalchemy.orm import load_only
 from flask_restful import Resource
 import requests
 
@@ -13,6 +14,15 @@ class UserBaseApi(Resource):
     schema = UserSchema()
 
 
+@api.resource('/users')
+class UserListApi(UserBaseApi):
+    def get(self):
+        return {'ids': [
+            x.id for x in User.query.options(load_only("id")).all()
+        ]}, 200
+
+
+
 @api.resource('/users/<int:user_id>')
 class UserApi(UserBaseApi):
     def get(self, user_id):
@@ -24,11 +34,15 @@ class UserApi(UserBaseApi):
 
     def post(self, user_id):
         json = request.json or {}
+        last_online = json.pop('last_online', None)
+        if json:
+            return '', 403
         try:
             user = User.get(user_id)
         except ValueError:
             return self.NOT_EXISTS_MESSAGE.format(user_id), 404
-        user.update(json)
+        user.last_online = last_online or user.last_online
+        user.save()
         return self.schema.dump(user), 202
 
     def delete(self, user_id):

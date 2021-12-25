@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">{% endblock %}
+
+{% block body %}
+{% include 'nav.html' %}
+{% include 'flash_messages.html' %}
+<form 
+    id="main" method="post" action="{{ url_for('auth.login') }}" 
+    class="row col-3 bg-dark text-light" novalidate autocomplete="off"
+>
+    <div class="col-12 justify-content-center" id="form-name">
+        Login
+    </div>
+    <div class="col-12">
+        <label for="username" class="form-label">Username</label>
+        <input 
+            type="text" name="username" class="form-control" 
+            id="username" placeholder="Your username..." required
+            value="{{ form.username }}"
+        >
+    </div>
+    <div class="col-12">
+        <label for="password" class="form-label">Password</label>
+        <input 
+            type="text" name="password" class="form-control" 
+            id="password" placeholder="Your password..." required
+        >
+    </div>
+    <div id="submit-div">
+        <input type="submit" value="Submit" class="btn btn-primary btn-lg" id="submit">
+    </div>
+</div>
+{% endblock %}

@@ -16,3 +16,13 @@ body {
 
 
 .bg-dark { background-color: #1C3144; }
+
+
+.alert {
+    border: 1px black solid;
+}
+
+.alert-danger {
+    background-color: #D00000;
+    color: white!important;
+}

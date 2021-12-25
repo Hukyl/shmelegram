@@ -7,7 +7,7 @@ from shmelegram.schema import ChatSchema
 
 
 class ChatBaseApi(Resource):
-    schema = ChatSchema()
+    schema = ChatSchema(exclude=['messages'])
 
 
 @api.resource('/chats/<int:chat_id>')
@@ -60,14 +60,9 @@ class ChatApi(ChatBaseApi):
 
 @api.resource('/chats')
 class ChatListApi(ChatBaseApi):
-    schema = ChatSchema(exclude=['messages'])
-    
     def get(self):
         json = request.json or {}
         startswith_name = json.get('startwith', '')
         return {'chats': [
             self.schema.dump(chat) for chat in Chat.startwith(startswith_name)
         ]}, 200
-        
-
-
