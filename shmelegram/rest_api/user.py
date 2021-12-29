@@ -117,6 +117,4 @@ class UnreadMessagesUserChatApi(UserBaseApi):
         except ValueError:
             return f"Chat {chat_id} does not exist", 404
         messages = chat.get_unread_messages(user)
-        return {'messages': messages}, 200
-
-
+        return {'messages': list(map(lambda x: x.id, messages))}, 200

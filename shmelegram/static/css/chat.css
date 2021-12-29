@@ -1,0 +1,154 @@
+html {
+  font-size: 16px;
+}
+
+body {
+  background-color: #1C3144;
+}
+
+div.section {
+  height: 100%;  
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* Start LEFT SECTION */
+
+div#left-header {
+  /* min-height: 30px; */
+  min-width: 100%;
+  margin: 5px;
+  margin-top: 15px;
+}
+
+button#menu-btn {
+  background: none;
+  box-shadow: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  justify-content: center;
+  align-items: center;
+}
+
+div#chat-list {
+  padding-top: 15px;
+  margin: 5px;
+  overflow-y: hidden;
+  pointer-events: auto;
+}
+
+div#chat-list:hover {
+  overflow-y: overlay;
+}
+
+div.title {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+div.chat {
+  align-items: center;
+  padding: 5px;
+  margin-bottom: 1px;
+  justify-content: space-between;
+  display: flex;
+  cursor: pointer;
+  border-radius: 15px;
+  margin-right: 5px;
+}
+
+div.active-chat, div.active-chat:hover {
+  background-color: #5088bd!important;
+}
+
+div.active-chat * {
+  color: white!important;
+}
+
+div.chat:hover {
+  background-color: #2a4a66;
+}
+
+div.info {
+  flex-grow: 1;
+  /* display: flexbox; */
+  height: 100%;
+  /* width: 19vw; */
+}
+
+h3.list-chat-title {
+  font-size: 1rem;
+  font-size: 1rem;
+  line-height: 1.6875rem;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  width: auto;
+  font-weight: 500;
+  width: auto;
+  max-width: 80%;    
+}
+
+div.status {
+  display: inline-block;
+  margin-right: 10px;
+}
+
+div.last-message-meta {
+  margin-right: 0.2rem;
+  padding: 0.3rem 0 0.15rem;
+  flex-shrink: 0;
+  font-size: .75rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  float: right;
+}
+
+input#search {
+  border-radius: 20px;
+  width: 95%;
+}
+
+
+.avatar {
+  border-radius: 50%;
+  width: 3.375rem;
+  height: 3.375rem;
+  flex: none;
+  font-size: 1.3125rem;
+  display: flex;
+  font-weight: bold;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+}
+.no-photo {
+  color: white;
+  padding: 8px;
+  white-space: nowrap;
+}
+
+.color-bg-0 {background-color: #FBBBFD;}
+.color-bg-1 {background-color: #CCDCFE;}
+.color-bg-2 {background-color: #FCCFCE;}
+.color-bg-3 {background-color: #A9F9DA;}
+.color-bg-4 {background-color: #E99AEE;}
+.color-bg-5 {background-color: #8BAE8B;}
+.color-bg-6 {background-color: #F98DDA;}
+.color-bg-7 {background-color: #BB8CF8;}
+.color-bg-8 {background-color: #EA989D;}
+.color-bg-9 {background-color: #FD989A;}
+
+/* End LEFT SECTION */
+
+/* Start MIDDLE SECTION */
+
+div#middle-section {
+  background-color: #131f2c;
+}

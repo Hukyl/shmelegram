@@ -28,6 +28,7 @@ from .rest_api import (
     message as message_api
 )
 
+from shmelegram.utils import filters
 
 api.init_app(rest_bp)
 

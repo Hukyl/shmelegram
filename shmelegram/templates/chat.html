@@ -2,15 +2,52 @@
 
 {% block title %}{% endblock %}
 
-{% block style %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
 {% endblock %}
 
 {% block body %}
-    <h1>You are in chat!</h1>
+<div id="main" class="container-fluid d-flex vh-100">
+  <div class="col-3 section" id="left-section">
+    <div class="row" id="left-header">
+      <button class="col-2" id="menu-btn">
+        <img src="{{ url_for('static', filename='images/menu-btn-white.png') }}" alt="Menu button" width="35px">
+      </button>
+      <div class="col">
+        <input type="text" id="search" placeholder="Search" class="form-control">
+      </div>
+    </div>
+    <div id="chat-list" class="custom-scroll">
+      {% for chat in user.chats.all() %}
+      {% set title = chat.title or chat.get_private_title(user) %}
+      {% set last_message = chat.messages.first() %}
+      <div class="chat {{ 'group' if chat.title else 'private' }}" data-id="{{ chat.id }}">
+        <div class="status">
+          <div class="avatar no-photo color-bg-{{ title[0]|ordinal_last }}">
+            {{ title[0]|upper }}
+          </div>
+        </div>
+        <div class="info">
+          <div class="title">
+            <h3 class="text-white list-chat-title">{{ title }}</h3>
+            <div class="last-message-meta">
+              <span class="time text-secondary">{{ last_message.created_at|diff_now }}</span>
+            </div>
+          </div>
+          <div class="subtitle">
+            <p class="last-message text-white-50">{{ last_message.text|truncate(length=32) }}</p>
+            <div class="unread-messages-count"></div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="col section" id="middle-section"></div>
+  <div class="col-0 section" id="right-section"></div>
+</div>
 {% endblock %}
 
 {% block js %}
 <script type="text/javascript" src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}
-

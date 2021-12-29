@@ -54,5 +54,3 @@ class ChatMessagesApi(MessageBaseApi):
         return {'messages': [
             self.schema.dump(message) for message in messages
         ]}
-
-

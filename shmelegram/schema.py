@@ -1,3 +1,4 @@
+from marshmallow import fields
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 
 from shmelegram.models import Chat, User, Message
@@ -9,6 +10,11 @@ class ChatSchema(SQLAlchemyAutoSchema):
         exclude = ['kind']
         include_fk = True
         include_relationships = True
+
+    type = fields.Method('get_kind')
+
+    def get_kind(self, chat: Chat):
+        return chat.kind.name.lower()
 
 
 class UserSchema(SQLAlchemyAutoSchema):

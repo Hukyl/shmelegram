@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime as dt
 from hashlib import sha256
-from typing import Any, NoReturn, List
+from typing import Any, NoReturn, List, Optional
 
 from sqlalchemy.sql import func
 from sqlalchemy.orm import load_only, validates, relationship, backref
@@ -76,6 +76,19 @@ class BaseMixin:
             raise ValueError(f'{cls.__name__} with id {id_} does not exist')
         return model
 
+    @classmethod
+    def get_or_none(cls, id_: int) -> Optional[BaseMixin]:        
+        """
+        Get model by some id. If this id does not exist, return None
+
+        Args:
+            id_ (int): id of model to be retrieved
+
+        Returns:
+            db.Model: model
+        """
+        return cls.query.get(id_)
+
     def delete(self):
         db.session.delete(self)
         db.session.flush()
@@ -148,13 +161,15 @@ class Chat(db.Model, BaseMixin):
     id = db.Column(db.Integer, primary_key=True)
     kind = db.Column(db.Enum(ChatKind))
     title = db.Column(db.String(50), nullable=True)
+
     members = relationship(
         'User', secondary=chat_membership, passive_deletes=True,
         backref=backref('chats', lazy='dynamic')
     )
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',
-        cascade="all, delete", passive_deletes=True
+        cascade="all, delete", passive_deletes=True,
+        order_by="-Message.created_at"
     )
 
     def __init__(self, *, kind: ChatKind, title: str = None):
@@ -198,8 +213,18 @@ class Chat(db.Model, BaseMixin):
         """
         if user not in self.members:
             raise ValueError('cannot get messages by non-member user')
-        return self.messages.filter(~Message.seen_by.has(user))\
+        return self.messages.filter(~Message.seen_by.any(~User.id == user.id))\
             .options(load_only("id")).all()
+
+    def get_private_title(self, user: User) -> str:
+        if self.kind is not ChatKind.PRIVATE:
+            raise ValueError("cannot get private title of non-private chat")
+        members = set(self.members)
+        if user not in members:
+            raise ValueError('cannot get title for non-member user')
+        members.remove(user)
+        return members.pop()
+
 
     @classmethod
     def get_by_title(cls, title: str, /) -> bool:
@@ -227,21 +252,28 @@ class Message(db.Model, BaseMixin):
 
     id = db.Column(db.Integer, primary_key=True)
     from_user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    from_user = relationship(
-        'User', uselist=False, foreign_keys=[from_user_id]
-    )
     chat_id = db.Column(
         db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")
     )
     is_service = db.Column(db.Boolean, nullable=False, default=False)
-    seen_by = relationship(
-        'User', secondary=message_views, lazy='dynamic', 
-        passive_deletes=True,
-    )
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('message.id'))
     text = db.Column(db.String(4096), nullable=False)
     created_at = db.Column(
         db.DateTime(), server_default=func.current_timestamp()
     )
+    edited_at = db.Column(
+        db.DateTime(), onupdate=func.current_timestamp(),
+        nullable=True, default=None
+    )
+
+    from_user = relationship(
+        'User', uselist=False, foreign_keys=[from_user_id]
+    )
+    seen_by = relationship(
+        'User', secondary=message_views, lazy='dynamic', 
+        passive_deletes=True,
+    )
+    reply_to = relationship('Message', remote_side=[id])
 
     @validates('seen_by', include_removes=True)
     def validate_view(self, key, user: User, is_remove: bool):
