@@ -3,11 +3,12 @@
 {% block title %}{% endblock %}
 
 {% block styles %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
 {% endblock %}
 
 {% block body %}
-<div id="main" class="container-fluid d-flex vh-100">
+<div id="main" class="d-flex vh-100">
   <div class="col-3 section" id="left-section">
     <div class="row" id="left-header">
       <button class="col-2" id="menu-btn">
@@ -18,36 +19,70 @@
       </div>
     </div>
     <div id="chat-list" class="custom-scroll">
-      {% for chat in user.chats.all() %}
-      {% set title = chat.title or chat.get_private_title(user) %}
+      {% for chat in chats %}
+      {% set title = chat.title if chat.title else chat.get_private_title(user) %}
       {% set last_message = chat.messages.first() %}
+      {% set unread_messages_count = chat.get_unread_messages(user)|length %}
       <div class="chat {{ 'group' if chat.title else 'private' }}" data-id="{{ chat.id }}">
         <div class="status">
-          <div class="avatar no-photo color-bg-{{ title[0]|ordinal_last }}">
+          <div class="avatar no-photo size-large color-bg-{{ title[0]|ordinal_last }}">
             {{ title[0]|upper }}
           </div>
         </div>
         <div class="info">
           <div class="title">
-            <h3 class="text-white list-chat-title">{{ title }}</h3>
+            <h3 class="text-white list-chat-title">{% if chat.title %}<i class="bi bi-people-fill"></i>   {% endif %}{{ title }}</h3>
             <div class="last-message-meta">
               <span class="time text-secondary">{{ last_message.created_at|diff_now }}</span>
             </div>
           </div>
           <div class="subtitle">
-            <p class="last-message text-white-50">{{ last_message.text|truncate(length=32) }}</p>
-            <div class="unread-messages-count"></div>
+            <p class="last-message text-white-50">
+              {% if chat.title %}
+                <span class="sender-name">{{ last_message.from_user.username }}</span><span class="colon">:</span>
+              {% endif %}
+              {{ last_message.text|truncate(length=32) }}
+            </p>
+            <div class="unread-messages-count {% if not unread_messages_count %}invisible{% endif %}">
+              {{ unread_messages_count if unread_messages_count }}
+            </div>
           </div>
         </div>
       </div>
       {% endfor %}
     </div>
   </div>
-  <div class="col section" id="middle-section"></div>
-  <div class="col-0 section" id="right-section"></div>
+  <div class="col section" id="middle-section">
+    <div class="invisible">
+      <div id="middle-header">
+        <div class="avatar no-photo size-medium"></div>
+        <div class="info">
+          <div class="title">
+            <h5 id="middle-title"></h5>
+          </div>
+          <div class="status text-white-50">
+            <span class="group-status" id="middle-member-count"></span><span class="comma invisible">,</span>            
+            <span class="online-status" id="middle-online-count"></span>
+          </div>
+        </div>
+      </div>
+      <div id="chat-messages">
+        <div id="message-layout"></div>
+      </div>
+      <div id="message-input">
+        <input type="text" placeholder="Message">
+        <button id="send-button">
+          <img src="{{ url_for('static', filename='images/logo-nobg-yellow.png') }}" alt="Send button">
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="section invisible" id="right-section"></div>
 </div>
 {% endblock %}
 
 {% block js %}
+<script type="text/javascript" src="{{ url_for('static', filename='js/strftime.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='js/utils.js') }}"></script>
 <script type="text/javascript" src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}

@@ -15,14 +15,14 @@ app.config.from_object(Config)
 db = SQLAlchemy(app, session_options={'autocommit': True})
 migrate = Migrate(app, db, directory=MIGRATION_DIR)
 
-socketio = SocketIO(app)
+socketio = SocketIO(app, engineio_logger=True, logger=True)
 
 api = Api()
 
 os.makedirs(app.instance_path, exist_ok=True)
 
 from .models import Chat, User, Message
-from .views import chat, home, auth
+from .views import chat, home, auth, messaging
 from .rest_api import (
     bp as rest_bp, chat as chat_api, user as user_api, 
     message as message_api

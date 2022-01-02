@@ -219,12 +219,11 @@ class Chat(db.Model, BaseMixin):
     def get_private_title(self, user: User) -> str:
         if self.kind is not ChatKind.PRIVATE:
             raise ValueError("cannot get private title of non-private chat")
-        members = set(self.members)
+        members = list(self.members)
         if user not in members:
             raise ValueError('cannot get title for non-member user')
         members.remove(user)
-        return members.pop()
-
+        return members[0].username
 
     @classmethod
     def get_by_title(cls, title: str, /) -> bool:
