@@ -18,6 +18,21 @@ function timeSince(date) {
     return "just now";
 }
 
+
+function diffNow(date) {
+    const dt = new Date(date);
+    const diff = Math.floor((toUTC(new Date()) -  new Date(date)) / 1000);
+    if (diff >= 365 * 24 * 60 * 60)
+        return strftime("%b %d %Y", dt);
+    else if (diff >= 7 * 24 * 60 * 60)
+        return strftime("%b %d", dt);
+    else if (diff >= 24 * 60 * 60)
+        return strftime("%a", dt);
+    else
+        return strftime("%H:%M", dt);
+}
+
+
 function getDateGroupTime(unixTimestamp) {
     let date = new Date(unixTimestamp);
     let seconds = Math.floor((new Date() - date) / 1000);

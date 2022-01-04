@@ -164,7 +164,7 @@ class Chat(db.Model, BaseMixin):
 
     members = relationship(
         'User', secondary=chat_membership, passive_deletes=True,
-        backref=backref('chats', lazy='dynamic')
+        backref=backref('chats', lazy='dynamic'), lazy='dynamic'
     )
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',
@@ -200,6 +200,10 @@ class Chat(db.Model, BaseMixin):
         self.members.append(user)
         return True
 
+    def remove_member(self, user: User) -> True:
+        self.members.remove(user)
+        return True
+
     def get_unread_messages(self, user: User) -> List[Message]:
         """
         Get unread messages by a user.
@@ -211,15 +215,15 @@ class Chat(db.Model, BaseMixin):
         Returns:
             List[Message]
         """
-        if user not in self.members:
+        if user not in self.members.all():
             raise ValueError('cannot get messages by non-member user')
-        return self.messages.filter(~Message.seen_by.any(~User.id == user.id))\
+        return self.messages.filter(~Message.seen_by.any(User.id == user.id))\
             .options(load_only("id")).all()
 
     def get_private_title(self, user: User) -> str:
         if self.kind is not ChatKind.PRIVATE:
             raise ValueError("cannot get private title of non-private chat")
-        members = list(self.members)
+        members = list(self.members.all())
         if user not in members:
             raise ValueError('cannot get title for non-member user')
         members.remove(user)
@@ -278,10 +282,9 @@ class Message(db.Model, BaseMixin):
     def validate_view(self, key, user: User, is_remove: bool):
         if is_remove:
             raise ValueError('not allowed to remove view')
-        elif user not in self.chat.members:
+        elif user not in self.chat.members.all():
             raise ValueError('cannot add view by non-member user')
-        
-        return user      
+        return user
 
     @hybrid_method
     def add_view(self, user: User) -> True:

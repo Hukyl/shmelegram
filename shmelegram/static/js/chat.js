@@ -2,13 +2,20 @@ const GLOBAL = {
     invisibleClassName: 'invisible', activeChatClassName: 'active-chat',
     middleSectionInsvisibleSelector: 'div#middle-section > div',
     chatIdAttribute: 'data-id', chatSelector: '.chat',
-    activeChatDisplay: null,
+    activeChatDisplay: null, messageAPILength: 50,
+    isLoadingMessages: false,
     __state: JSON.parse(localStorage.getItem('global-state')),
     get state() { return this.__state },
     set state(data) {
         this.__state = data;
         localStorage.setItem('global-state', JSON.stringify(data));
-    }
+    }, 
+    socket: io.connect(
+        'http://' + document.domain + ':' + location.port, 
+        {query: {
+            user_id: parseInt(getCookie('userID'))
+        }}
+    )
 }
 
 
@@ -17,19 +24,20 @@ const messageObserver = new IntersectionObserver(function(entries, observer) {
     const chatId = parseInt($(`.${GLOBAL.activeChatClassName}`)[0].getAttribute('data-id'));
     for (let entry of entries) {
         let messageId = parseInt(entry.target.getAttribute('data-message-id'));
-        socket.emit('add_view', {
+        GLOBAL.socket.emit('add_view', {
             message_id: messageId, user_id: state.currentUserId
         });
+        entry.target.classList.remove('unread');
         observer.unobserve(entry.target);
         let message = state.messages[chatId].find(message => message.id === messageId);
         message.seen_by.push(state.currentUserId);
-        state.chats.byId[chatId].unreadMessagesCount--;
-        $(`#chat-list > .chat[data-id=${chatId}] .unread-messages-count`)[0].innerText = (
-            state.chats.byId[chatId].unreadMessagesCount
-        );            
+        state.chats.byId[chatId].unreadMessagesCount = Math.max(
+            1, state.chats.byId[chatId].unreadMessagesCount
+        ) - 1;
+        GLOBAL.state = state;
+        ChatListDisplay.updateChatUnreadCount(chatId);
     }
-    GLOBAL.state = state;
-}, {threshold: 1, root: $('div#chat-messages')[0]})
+}, {threshold: 1})
 
 
 class DateMessageGroup {
@@ -56,6 +64,7 @@ class DateMessageGroup {
     isEmpty() { return this.#html.children.length <= 1}
 
     createMessage(message) {
+        const chat = GLOBAL.state.chats.byId[message.chat];
         let messageNode = document.createElement('div');
         messageNode.id = `message${message.id}`;
         messageNode.setAttribute('data-message-id', message.id);
@@ -71,16 +80,23 @@ class DateMessageGroup {
         messageMeta.className = 'message-meta';
         let messageTime = document.createElement('span');
         messageTime.className = 'message-time';
-        messageTime.innerText = strftime('%H:%M', fromUTCString(message.created_at));
+        messageTime.innerText = message.edited_at !== null ? 'edited ' : '';
+        messageTime.innerText += strftime('%H:%M', fromUTCString(message.created_at));
+        messageTime.title = strftime('%b %d, %Y, %I:%M:%S %p', fromUTCString(message.created_at));
+        if (message.edited_at)
+            messageTime.title += (
+                '\nedited: ' + 
+                strftime('%b %d, %Y, %I:%M:%S %p', fromUTCString(message.edited_at))
+            )
         messageMeta.appendChild(messageTime);
-        textContent.appendChild(messageMeta);        
+        textContent.appendChild(messageMeta);
         if (message.from_user === GLOBAL.state.currentUserId) {
             messageNode.classList.add('own');
             let messageOutgoingStatus = document.createElement('div');
             messageOutgoingStatus.className = 'message-outgoing-status';
             let messageDelivery = document.createElement('i');
             messageDelivery.className = 'bi bi-check';
-            if (message.seen_by.length > 1) 
+            if (message.seen_by.length > Math.min(chat.members.length - 1, 1)) 
                 messageDelivery.className += '-all';
             messageOutgoingStatus.appendChild(messageDelivery);
             messageMeta.appendChild(messageOutgoingStatus);
@@ -96,25 +112,33 @@ class DateMessageGroup {
             messageNode.appendChild(avatarDiv);
         }
         if (!message.seen_by.includes(GLOBAL.state.currentUserId)) 
-            messageObserver.observe(messageNode);
+            messageNode.classList.add('unread');
         content.appendChild(textContent);
         contentWrapper.append(content);
         messageNode.appendChild(contentWrapper);
         return messageNode;
     }
 
-    insertMessage(message) {
+    appendMessage(message) {
         this.#html.appendChild(this.createMessage(message));
     }
 
-    insertMessageDiv(messageDiv) {
+    appendMessageDiv(messageDiv) {
         this.#html.appendChild(messageDiv);
+    }
+
+    insertMessage(message) {
+        this.#html.insertBefore(this.createMessage(message), this.#html.children[1]);
+    } 
+
+    insertMessageDiv(messageDiv) {
+        this.#html.insertBefore(messageDiv, this.#html.children[1]);
     }
 
     isMessageDisplayed(messageId) {
         if (this.isEmpty()) return false;
         for (let messageDiv of this.#html.querySelectorAll('.message')) {
-            if (messageDiv.getAttribute('data-message-id') === messageId)
+            if (messageDiv.getAttribute('data-message-id') == messageId)
                 return true;
         }
         return false;
@@ -125,16 +149,34 @@ class DateMessageGroup {
         let date2 = strftime('%Y-%m-%d', new Date(Date.parse(this.date)));
         return date1 === date2;
     };
+
+    get length() {
+        return this.#html.querySelectorAll('div.message').length;
+    }
 }
 
 
 class ChatDisplay {
     #statusIntervalId;
 
-    constructor(chat) { 
-        this.chat = chat;
+    constructor(chatId) { 
+        this.chatId = chatId;
         this.messageGroups = [];
         this.#statusIntervalId = null;
+    }
+
+    get chat() {
+        return GLOBAL.state.chats.byId[this.chatId];
+    }
+
+    get onlineMembers() {
+        const state = GLOBAL.state;
+        let count = 0;
+        for (let memberId of this.chat.members) {
+            if (state.users[memberId].last_online === null)
+                count++;
+        }
+        return count;
     }
 
     updateStatus() {
@@ -145,7 +187,7 @@ class ChatDisplay {
             totalMembers.innerText = `${this.chat.members.length} member`;
             if (this.chat.members.length > 1)
                 totalMembers.innerText += 's';
-            let onlineMemberCount = getChatOnlineMembers(this.chat);
+            let onlineMemberCount = this.onlineMembers;
             if (onlineMemberCount) {
                 commaSpan.classList.remove(GLOBAL.invisibleClassName);
                 onlineMembers.innerText = `${onlineMemberCount} online`;
@@ -157,24 +199,19 @@ class ChatDisplay {
             let [totalMembers, commaSpan, onlineMembers] = $('#middle-header > .info > .status > span');
             commaSpan.classList.add(GLOBAL.invisibleClassName);
             onlineMembers.innerText = '';
-            let chatMembers = GLOBAL.state.chats.byId[this.chat.id].members.slice();
-            delete chatMembers[chatMembers.indexOf(GLOBAL.state.currentUserId)];
-            const companionUser = GLOBAL.state.users[chatMembers.find(el => el !== undefined)];
-            if (companionUser.last_online === null)
-                totalMembers.innerText = "online";
-            else
-                totalMembers.innerText = `last seen ${timeSince(fromUTCString(companionUser.last_online))}`;
+            this.#intervalStatus();
         }
     }
 
     #intervalStatus() {
         let totalMembers = $('#middle-header > .info > .status > span')[0];
-        let chatMembers = GLOBAL.state.chats.byId[this.chat.id].members.slice();
+        let chatMembers = this.chat.members.slice();
         delete chatMembers[chatMembers.indexOf(GLOBAL.state.currentUserId)];
         const companionUser = GLOBAL.state.users[chatMembers.find(el => el !== undefined)];
-        totalMembers.innerText = (
-            `last seen ${timeSince(fromUTCString(companionUser.last_online))}`
-        );
+        if (companionUser.last_online === null)
+            totalMembers.innerText = "online";
+        else
+            totalMembers.innerText = `last seen ${timeSince(fromUTCString(companionUser.last_online))}`;
     }
 
     #displayHeader() {
@@ -197,80 +234,262 @@ class ChatDisplay {
 
     #displayMessages() {
         // display chat messages in middle section
-        const isGroup = this.chat.type === 'group';
-        const state = GLOBAL.state;
         const layout = $('#message-layout')[0];
-        let messages = state.messages[this.chat.id];
-        let dateMessageGroup = new DateMessageGroup(
-            messages[0].created_at, isGroup
-        );
-        this.messageGroups.push(dateMessageGroup);
-        for (let i = 0; i < Math.min(messages.length, 50); i++) {
+        let messages = GLOBAL.state.messages[this.chatId];
+        for (
+                let i = messages.length - 1; 
+                i >= Math.max(0, messages.length - GLOBAL.messageAPILength); 
+                i--
+            ) {
             let message = messages[i];
-            if (!dateMessageGroup.compareDate(message.created_at)) {
-                if (!dateMessageGroup.isEmpty()) {
-                    layout.appendChild(dateMessageGroup.node);
-                    dateMessageGroup = new DateMessageGroup(message.created_at, isGroup);
-                    this.messageGroups.push(dateMessageGroup);
-                }
-            }
-            dateMessageGroup.insertMessage(message);
+            this.insertMessage(message);
         }
-        if (!dateMessageGroup.isEmpty())
-            layout.appendChild(dateMessageGroup.node);
+        for (let messageGroup of this.messageGroups)
+            layout.appendChild(messageGroup.node);
     }
 
     isMessageDisplayed(messageId) {
         return this.messageGroups.some(group => group.isMessageDisplayed(messageId));
     }
 
+    insertMessage(message) {
+        let firstMessageGroup = this.messageGroups[0];
+        if (firstMessageGroup === undefined || !firstMessageGroup.compareDate(message.created_at)) {
+            firstMessageGroup = new DateMessageGroup(
+                message.created_at, this.chat.type === 'group'
+            );
+            this.messageGroups.unshift(firstMessageGroup);
+        }
+        const messageDiv = firstMessageGroup.createMessage(message);
+        firstMessageGroup.insertMessageDiv(messageDiv);
+        if (messageDiv.classList.contains('unread')) 
+            messageObserver.observe(messageDiv);
+    }
+
     addMessage(message) {
         let lastMessageGroup = this.messageGroups[this.messageGroups.length - 1];
-        if (lastMessageGroup.compareDate(message.created_at)) {
+        if (lastMessageGroup === undefined || !lastMessageGroup.compareDate(message.created_at)) {
             lastMessageGroup = new DateMessageGroup(
                 message.created_at, this.chat.type === 'group'
             );
             this.messageGroups.push(lastMessageGroup);
         }
-        let messageDiv = lastMessageGroup.createMessage(message);
-        lastMessageGroup.insertMessageDiv(messageDiv);
+        const messageDiv = lastMessageGroup.createMessage(message);
+        lastMessageGroup.appendMessageDiv(messageDiv);
+        if (messageDiv.classList.contains('unread')) 
+            messageObserver.observe(messageDiv);
     }
 
-    static scrollMessagesToBotton() {
+    static scrollMessagesToBottom() {
         let chatMessages = $('#chat-messages')[0];
         chatMessages.scrollTop = chatMessages.scrollHeight;    
     }
 
     display() { 
         this.#displayHeader(); this.#displayMessages();
-        ChatDisplay.scrollMessagesToBotton()
+        ChatDisplay.scrollMessagesToBottom()
     }
 
     hide() {
         $('#message-layout')[0].innerHTML = '';
         clearInterval(this.#statusIntervalId);
+        messageObserver.disconnect();
+    }
+
+    get length() {
+        return this.messageGroups.reduce((prev, curr) => prev + curr.length, 0)
+    }
+
+    get firstMessage() {
+        return document.querySelector('div.message');
+    }
+
+    deleteMessage(messageId) {
+        const messageDiv = $(`div.message[data-message-id=${messageId}]`)[0];
+        messageObserver.unobserve(messageDiv);
+        messageDiv.parentNode.removeChild(messageDiv);
+    }
+
+    setMessageAsViewed(messageId) {
+        $(
+            `.message[data-message-id=${messageId}] .message-outgoing-status > i.bi`
+        )[0].className = 'bi bi-check-all';
     }
 }
+
+
+class ChatListDisplay {
+    static addChat(chatId) {}
+
+    static removeChat(chatId) {}
+
+    static selectChat(chatId) {}
+
+    static unselectActiveChat() {
+        $(`.${GLOBAL.activeChatClassName}`)[0]?.classList.remove(
+            GLOBAL.activeChatClassName
+        );
+    }
+
+    static updateChat(chatId) {
+        const chat = GLOBAL.state.chats.byId[chatId];
+        if (!chat) return;
+        const chatDiv = $(`#chat-list > .chat[data-id=${chatId}]`)[0];
+        if (!chatDiv) return;
+        ChatListDisplay.updateChatName(chatId);
+        ChatListDisplay.updateChatLastMessage(chatId);
+        ChatListDisplay.updateChatUnreadCount(chatId);
+    }
+
+    static updateChatName(chatId) {
+        const chat = GLOBAL.state.chats.byId[chatId];
+        const chatDiv = $(`#chat-list > .chat[data-id=${chatId}]`)[0];        
+        const chatAvatar = chatDiv.querySelector('.status > .avatar');
+        chatAvatar.className = chatAvatar.className.replace(
+            /color-bg-\d/, `color-bg-${ordinalLast(chat.title)}`
+        );
+        chatAvatar.innerText = chat.title.charAt(0).toUpperCase();
+        const chatTitle = chatDiv.querySelector('.info > .title > h3');
+        chatTitle.innerHTML = chat.title;
+        if (chat.type === 'group')
+            chatTitle.innerHTML = `<i class="bi bi-people-fill"></i>  ${chatTitle.innerHTML}`;        
+    }
+
+    static updateChatLastMessage(chatId) {
+        const chat = GLOBAL.state.chats.byId[chatId];
+        const lastMessage = GLOBAL.state.messages[chatId][GLOBAL.state.messages[chatId].length - 1];
+        $(`#chat-list > .chat[data-id=${chatId}] .title span`)[0].innerText = diffNow(
+            lastMessage.created_at
+        );
+        const subtitle = $(`#chat-list > .chat[data-id=${chatId}] .info > .subtitle`)[0];
+        const lastMessageText = subtitle.querySelector('p');
+        lastMessageText.innerText = lastMessage.text;
+        if (chat.type === 'group') {
+            const fromUser = GLOBAL.state.users[lastMessage.from_user];
+            const senderName = fromUser.id === GLOBAL.state.currentUserId ? 'You' : fromUser.username;
+            lastMessageText.innerHTML = (
+                '<span class="sender-name">' + 
+                senderName + 
+                '</span><span class="colon">:</span> ' +
+                lastMessageText.innerHTML
+            )                
+        }     
+    }
+
+    static updateChatUnreadCount(chatId) {
+        const chat = GLOBAL.state.chats.byId[chatId];
+        const unreadMessagesCount = $(
+            `#chat-list > .chat[data-id=${chatId}] div.unread-messages-count`
+        )[0];
+        unreadMessagesCount.innerText = chat.unreadMessagesCount;
+        if (chat.unreadMessagesCount > 0)
+            unreadMessagesCount.classList.remove('invisible');
+        else
+            unreadMessagesCount.classList.add('invisible');               
+    }
+
+    static moveToTop(chatId) {
+        const chat = GLOBAL.state.chats.byId[chatId];
+        if (!chat) return;
+        const chatDiv = $(`#chat-list > .chat[data-id=${chatId}]`)[0];
+        if (!chatDiv) return;
+        const chatList = $('#chat-list')[0];
+        chatList.insertBefore(chatDiv, chatList.children[0]);
+    }
+
+    static displayChats() {
+
+    }
+
+    static displaySearch(searchQuery) {}
+
+    static hideSearch() {}
+}
+
+
+class Dialog {
+    createNode() {
+        const modalContainer = document.createElement('div');
+        modalContainer.className = 'modal fade';
+        modalContainer.tabIndex = -1;
+        const modalDialog = document.createElement('div');
+        modalDialog.className = 'modal-dialog modal-dialog-centered';
+        const modalContent = document.createElement('div');
+        modalContent.className = 'modal-content';        
+        const modalHeader = document.createElement('div');
+        modalHeader.className = 'modal-header';
+        const modalTitle = document.createElement('h5');
+        modalTitle.className = 'modal-title';
+        const modalBody = document.createElement('div');
+        modalBody.className = 'modal-body';
+        const modalFooter = document.createElement('div');
+        modalFooter.className = 'modal-footer';
+        modalHeader.appendChild(modalTitle);
+        modalContent.appendChild(modalHeader);
+        modalContent.appendChild(modalBody);
+        modalContent.appendChild(modalFooter);
+        modalDialog.appendChild(modalContent);
+        modalContainer.appendChild(modalDialog);
+        return modalContainer;
+    }
+
+    display() {
+        const node = this.createNode();
+        $('div#portals')[0].appendChild(node);
+        new bootstrap.Modal(node).show();
+        node.addEventListener('hidden.bs.modal', this.hide);
+    }
+
+    hide() {
+        for (let modal of $('#portals .modal')) {
+            bootstrap.Modal.getOrCreateInstance(modal).hide();
+        }
+        setTimeout(function() {
+            $('div#portals')[0].innerHTML = '';
+        }, 150);
+    }
+}
+
+class DeleteMessageDialog extends Dialog {
+    createNode() {
+        const node = super.createNode();
+        const title = node.querySelector('.modal-title');
+        title.innerText = 'Delete message';
+        const body = node.querySelector('.modal-body');
+        const footer = node.querySelector('.modal-footer');
+        const p = document.createElement('p');
+        p.innerText = 'Are you sure you want to delete this message?';
+        const buttonConfirm = document.createElement('button');
+        buttonConfirm.className = 'btn btn-danger';
+        buttonConfirm.innerText = 'Delete';
+        buttonConfirm.onclick = function(event) {
+            GLOBAL.socket.emit('delete_message', {message_id: this.messageId});
+            this.hide();
+        }.bind(this);
+        const buttonCancel = document.createElement('button');
+        buttonCancel.className = 'btn btn-secondary';
+        buttonCancel.innerText = 'Cancel';
+        buttonCancel.setAttribute('data-bs-dismiss', 'modal');
+        buttonCancel.onclick = this.hide;
+        body.appendChild(p); 
+        footer.appendChild(buttonConfirm); 
+        footer.appendChild(buttonCancel);
+        return node;
+    }
+
+    constructor(messageId) {
+        super();
+        this.messageId = messageId;
+    }
+}
+
 
 
 function hideActiveChat() {
     GLOBAL.activeChatDisplay?.hide();
     GLOBAL.activeChatDisplay = null;
-    $(`.${GLOBAL.activeChatClassName}`)[0]?.classList.remove(GLOBAL.activeChatClassName);
-}
-
-function getChatOnlineMembers(chat) {
-    const state = GLOBAL.state;
-    let count = 0;
-    for (let memberId of chat.members) {
-        if (state.users[memberId].last_online === null)
-            count++;
-    }
-    return count;
-}
-
-function displayChats(chats) {
-    // display chats in left section
+    $('#editable-message-text')[0].innerText = '';
+    ChatListDisplay.unselectActiveChat();
 }
 
 
@@ -282,13 +501,6 @@ $('input#search').change(function() {
 $('div#middle-header').click(function() {
     // display detailed info about chat
 });
-
-const socket = io.connect(
-    'http://' + document.domain + ':' + location.port, 
-    {query: {
-        user_id: parseInt(getCookie('userID'))
-    }}
-);
 
 
 $(document).ready(async function() {
@@ -312,11 +524,6 @@ $(document).ready(async function() {
         .then(function(response) {
             data.chats.byId[chatId].unreadMessagesCount = response.messages.length;
         });
-        if (data.chats.byId[chatId].unreadMessagesCount.length !== 0) {
-            let unreadDiv = chat.querySelector('.info > .subtitle > div');
-            unreadDiv.classList.remove(GLOBAL.invisibleClassName);
-            unreadDiv.innerText = data.chats.byId[chatId].unreadMessagesCount;
-        }
         await $.get(`api/chats/${chatId}`).then(function(response) {
             data.chats.byId[chatId].members = response.members;
         });
@@ -329,8 +536,9 @@ $(document).ready(async function() {
             });
         }
         data.chats.listIds.push(chatId);
+        GLOBAL.state = {...GLOBAL.state, ...data};
+        ChatListDisplay.updateChatUnreadCount(chatId);
     }
-    GLOBAL.state = {...GLOBAL.state, ...data};
 });
 
 
@@ -339,46 +547,153 @@ $('.chat').click(function() {
     this.classList.add(GLOBAL.activeChatClassName);
     $(GLOBAL.middleSectionInsvisibleSelector)[0].classList.remove(GLOBAL.invisibleClassName);
     let chatId = parseInt(this.getAttribute(GLOBAL.chatIdAttribute));
-    GLOBAL.activeChatDisplay = new ChatDisplay(GLOBAL.state.chats.byId[chatId]);
+    GLOBAL.activeChatDisplay = new ChatDisplay(chatId);
     GLOBAL.activeChatDisplay.display();
 });
+
 
 $(window).blur(function() {
     // send request to update last_online
     let userId = parseInt(GLOBAL.state.currentUserId);
-    socket.emit('is_offline', {user_id: userId});
+    GLOBAL.socket.emit('is_offline', {user_id: userId});
 });
 $(window).focus(function() {
     // send request to set online status
     let userId = parseInt(GLOBAL.state.currentUserId);
-    socket.emit('is_online', {user_id: userId}); 
+    GLOBAL.socket.emit('is_online', {user_id: userId}); 
 });
+
+
+$('#chat-messages').scroll(async function() {
+    const chatId = GLOBAL.activeChatDisplay.chatId;
+    if ($('#chat-messages')[0].scrollTop > 500) return;
+    if (GLOBAL.isLoadingMessages) return;
+    GLOBAL.isLoadingMessages = true;
+    const totalMessageCount = GLOBAL.state.messages[chatId].length;
+    const displayedMessageCount = GLOBAL.activeChatDisplay.length;
+    if (displayedMessageCount === totalMessageCount) {
+        const messagePage = Math.ceil(totalMessageCount / GLOBAL.messageAPILength) + 1;
+        let messages = null;
+        await $.get(`api/messages/chat/${chatId}?page=${messagePage}`).then(function(response) {
+            messages = response.messages;
+        });
+        if (messages.length === 0) {
+            GLOBAL.isLoadingMessages = false;
+            return;
+        }
+        const state = GLOBAL.state;
+        state.messages[chatId].unshift(...messages.reverse());
+        GLOBAL.state = state;
+    }
+    const firstMessageId = parseInt(
+        GLOBAL.activeChatDisplay.firstMessage.getAttribute('data-message-id')
+    );
+    const firstMessageIndex = GLOBAL.state.messages[chatId].findIndex(
+        element => element.id === firstMessageId
+    );
+    for (let i = firstMessageIndex - 1; i >= Math.max(0, firstMessageIndex - GLOBAL.messageAPILength); i--) {
+        GLOBAL.activeChatDisplay.insertMessage(GLOBAL.state.messages[chatId][i]);
+    }
+    GLOBAL.isLoadingMessages = false;
+});
+
 
 $(document).on('keydown', function(e) {
     if (e.key == "Escape") {
         hideActiveChat();
         $(GLOBAL.middleSectionInsvisibleSelector)[0].classList.add(GLOBAL.invisibleClassName);
+    } else if (e.key == "Enter") {
+        $('button#send-button').click();
+    }
+});
+
+
+$.contextMenu({
+    selector: 'div.message', 
+    build: function($trigger, event) {
+        const messageDiv = $trigger[0];
+        const chat = GLOBAL.state.chats.byId[GLOBAL.activeChatDisplay.chatId];
+        const message = GLOBAL.state.messages[chat.id].find(
+            msg => msg.id === parseInt(messageDiv.getAttribute('data-message-id'))
+        );
+        const isOwnMessage = message.from_user === GLOBAL.state.currentUserId;
+        const items = {};
+        items.copy = {
+            name: "Copy", icon: 'copy', 
+            callback: function (itemKey, opt, rootMenu, originalEvent) {
+                let messageText = opt.$trigger[0].querySelector('p').textContent;
+                messageText = messageText.substring(0, messageText.lastIndexOf("\n"));
+                if (!navigator.clipboard) {
+                    console.error('Copy: can not copy text to clipboard');
+                    return false;
+                }
+                navigator.clipboard.writeText(messageText)
+                .then(function() {}, function(err) {
+                    console.error('Async: Could not copy text: ', err);
+                });
+                return true;
+            }
+        };
+        if (isOwnMessage) 
+            items.edit = {
+                name: "Edit", icon: "edit",
+                callback: function(itemKey, opt, rootMenu, originalEvent) {
+                    const messageDiv = opt.$trigger[0];
+                    // TODO: finish editing
+                }
+            }
+        if (chat.type === 'private' || chat.type === 'group' && isOwnMessage)
+            items.delete = {
+                name: "Delete", icon: "delete", 
+                callback: function() {
+                    new DeleteMessageDialog(message.id).display();
+                    return true;
+                }
+            }
+        return {items: items};
     }
 });
 
 
 $('button#send-button').click(function() {
-    const text = $('#message-input > input')[0].value.trim();
+    const input = $('#editable-message-text')[0];
+    const text = input.innerText.trim();
     if (!text)
         return;
     const state = GLOBAL.state;
     const message = {
-        chat_id: $(`.${GLOBAL.activeChatClassName}`)[0].getAttribute('data-id'),
-        user_id: GLOBAL.state.currentUserId, is_service: false,
-        text: text, reply_to: null, 
+        chat_id: GLOBAL.activeChatDisplay.chatId,
+        user_id: state.currentUserId, is_service: false,
+        text: text, reply_to: null, seen_by: [state.currentUserId],
         created_at: strftime("%Y-%m-%dT%H:%M:%S", toUTC(new Date()))
     };
-    socket.emit('message', message);
-    state.messages[message.chat_id].push(message);
-    GLOBAL.activeChatDisplay.addMessage(message);
+    input.innerText = '';
+    GLOBAL.socket.emit('message', message);
 });
 
-socket.on('update_user_status', function(data) {
+
+GLOBAL.socket.on('message', function(message) {
+    const state = GLOBAL.state;
+    state.messages[message.chat].push(message);
+    GLOBAL.state = state;
+    debugger;
+    if (message.chat === GLOBAL.activeChatDisplay?.chatId) {
+        GLOBAL.activeChatDisplay.addMessage(message);
+        ChatDisplay.scrollMessagesToBottom();
+        ChatListDisplay.updateChatLastMessage(message.chat);
+    } else {
+        const state = GLOBAL.state;
+        state.chats.byId[message.chat].unreadMessagesCount = Math.max(
+            0, state.chats.byId[message.chat].unreadMessagesCount
+        ) + 1;
+        GLOBAL.state = state;
+        ChatListDisplay.updateChat(message.chat);
+    }
+    ChatListDisplay.moveToTop(message.chat);
+});
+
+
+GLOBAL.socket.on('update_user_status', function(data) {
     const state = GLOBAL.state;
     if (state.users.hasOwnProperty(data.user_id)) {
         state.users[data.user_id].last_online = data.last_online;
@@ -389,7 +704,7 @@ socket.on('update_user_status', function(data) {
 });
 
 
-socket.on('update_view', function(data) {
+GLOBAL.socket.on('update_view', function(data) {
     const state = GLOBAL.state;
     const messageArrId = state.messages[data.chat_id].findIndex(
         message => message.id === data.message_id
@@ -399,8 +714,22 @@ socket.on('update_view', function(data) {
     GLOBAL.state = state;
     let fromUser = state.messages[data.chat_id][messageArrId].from_user;
     if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id) && 
-            fromUser === state.currentUserId && data.user_id !== state.currentUserId)
-        $(
-            `.message[data-message-id=${data.message_id}] .message-outgoing-status > i.bi`
-        )[0].className += '-all';
+            fromUser === state.currentUserId)
+        GLOBAL.activeChatDisplay.setMessageAsViewed(data.message_id);
+});
+
+GLOBAL.socket.on('delete_message', function(data) {
+    const state = GLOBAL.state;
+    const messageArrayIndex = state.messages[data.chat_id].findIndex(
+        msg => msg.id === data.message_id
+    );
+    if (messageArrayIndex === -1) return;
+    const message = state.messages[data.chat_id][messageArrayIndex];
+    const chat = state.chats.byId[data.chat_id];
+    if (!message.seen_by.includes(state.currentUserId))
+        chat.unreadMessagesCount = Math.max(1, chat.unreadMessagesCount) - 1;
+    state.messages[chat.id].splice(messageArrayIndex, 1);
+    GLOBAL.state = state;
+    if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id))
+        GLOBAL.activeChatDisplay.deleteMessage(data.message_id);
 });

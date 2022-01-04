@@ -43,8 +43,7 @@ class MessageApi(MessageBaseApi):
 @api.resource('/messages/chat/<int:chat_id>')
 class ChatMessagesApi(MessageBaseApi):
     def get(self, chat_id: int):
-        json = request.json or {}
-        page = json.get('page', 1)
+        page = request.args.get('page', 1, int)
         chat = Chat.get(requests.get(
             url_for('api.chatapi', chat_id=chat_id, _external=True)
         ).json()['id'])

@@ -14,6 +14,29 @@ def datetime_to_str(dt: datetime) -> str:
 
 
 @socketio.event
+def edit_message(data: dict[str, Any]):
+    message_id = data['message_id']
+    message = Message.get(message_id)
+    text = data['text']
+    message.text = text
+    message.save()
+    emit(
+        'edit_message', data | {"chat_id": message.chat.id}, 
+        to=message.chat.id
+    )
+
+
+@socketio.event
+def delete_message(data: dict[str, Any]):
+    print(data)
+    message_id = data['message_id']
+    message = Message.get(message_id)
+    data['chat_id'] = message.chat.id
+    message.delete()
+    emit('delete_message', data, to=message.chat.id)
+
+
+@socketio.event
 def add_view(data: dict[str, Any]):
     user_id = data['user_id']
     message_id = data['message_id']
@@ -89,7 +112,7 @@ def leave_chat(data: dict[str, Any]):
         text=f"{user.username} left the group"
     )
     message.save()
-    send({"message_id": message.id}, json=True, to=chat_id)    
+    send({"message_id": message.id}, json=True, to=chat_id)
 
 
 @socketio.event
@@ -105,21 +128,20 @@ def edit_message(data: dict[str, Any]):
 
 @socketio.on('message')
 def send_message(data: dict[str, Any]):
-    chat_id = data['chat_id']
-    user_id = data['user_id']
-    is_service = data['is_service']
-    text = data['text']
-    reply_to_id = data['reply_to']
+    chat = Chat.get(data['chat_id'])
+    user = User.get(data['user_id'])
     created_at = datetime.strptime(data['created_at'], '%Y-%m-%dT%H:%M:%S')
-    reply_to = Message.get_or_none(reply_to_id)
+    reply_to = Message.get_or_none(data['reply_to'])
     message = Message(
-        chat=Chat.get(chat_id), from_user=User.get(user_id), 
-        is_service=is_service, text=text, reply_to=reply_to,
-        created_at=created_at
+        chat=chat, from_user=user, 
+        is_service=data['is_service'], text=data['text'], 
+        reply_to=reply_to, created_at=created_at
     )
     message.save()
-    send(
-        {"message_id": message.id}, json=True, to=chat_id, 
-        skip_sid=request.sid
-    )
+    message.add_view(user)
+    message.save()
+    data['chat'] = data.pop('chat_id')
+    data['from_user'] = data.pop('user_id')
+    data['id'] = message.id
+    send(data, to=chat.id)
 
