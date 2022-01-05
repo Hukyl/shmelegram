@@ -45,7 +45,7 @@
           <div class="subtitle">
             <p class="last-message text-white-50">
               {% if chat.title %}
-                <span class="sender-name">{{ 'You' if last_message.from_user.id == user.id else last_message.from_user.username }}</span><span class="colon">:</span>
+                <span class="sender-name">{{ 'You' if last_message.from_user.id == user.id else last_message.from_user.username }}</span>
               {% endif %}
               {{ last_message.text }}
             </p>
@@ -76,9 +76,12 @@
         <div id="message-layout"></div>
       </div>
       <div id="message-input">
-        <div contenteditable="true" id="editable-message-text" placeholder="Message"></div>
-        <button id="send-button">
-          <img src="{{ url_for('static', filename='images/logo-nobg-yellow.png') }}" alt="Send button">
+        <div 
+          contenteditable="true" id="editable-message-text" 
+          placeholder="Message" onfocus="let t = this.innerHTML; this.innerHTML = ''; this.innerHTML = t;"
+        ></div>
+        <button id="send-button" class="button round">
+          <i class="bi bi-send"></i>
         </button>
       </div>
     </div>

@@ -3,13 +3,15 @@ const GLOBAL = {
     middleSectionInsvisibleSelector: 'div#middle-section > div',
     chatIdAttribute: 'data-id', chatSelector: '.chat',
     activeChatDisplay: null, messageAPILength: 50,
-    isLoadingMessages: false,
+    isLoadingMessages: false, __messageAction: null,
     __state: JSON.parse(localStorage.getItem('global-state')),
     get state() { return this.__state },
     set state(data) {
         this.__state = data;
         localStorage.setItem('global-state', JSON.stringify(data));
     }, 
+    get messageAction() {return this.__messageAction === null ? new Message() : this.__messageAction},
+    set messageAction(data) {this.__messageAction = data},
     socket: io.connect(
         'http://' + document.domain + ':' + location.port, 
         {query: {
@@ -41,12 +43,10 @@ const messageObserver = new IntersectionObserver(function(entries, observer) {
 
 
 class DateMessageGroup {
-    #isGroup;
     #html;
     date;
 
-    constructor(date, isGroup) {
-        this.#isGroup = isGroup;
+    constructor(date,) {
         this.date = date;
         this.#html = document.createElement('div');
         this.#html.classList.add('message-date-group');
@@ -63,7 +63,7 @@ class DateMessageGroup {
 
     isEmpty() { return this.#html.children.length <= 1}
 
-    createMessage(message) {
+    static createMessage(message) {
         const chat = GLOBAL.state.chats.byId[message.chat];
         let messageNode = document.createElement('div');
         messageNode.id = `message${message.id}`;
@@ -80,7 +80,7 @@ class DateMessageGroup {
         messageMeta.className = 'message-meta';
         let messageTime = document.createElement('span');
         messageTime.className = 'message-time';
-        messageTime.innerText = message.edited_at !== null ? 'edited ' : '';
+        messageTime.innerText = message.edited_at ? 'edited ' : '';
         messageTime.innerText += strftime('%H:%M', fromUTCString(message.created_at));
         messageTime.title = strftime('%b %d, %Y, %I:%M:%S %p', fromUTCString(message.created_at));
         if (message.edited_at)
@@ -100,7 +100,7 @@ class DateMessageGroup {
                 messageDelivery.className += '-all';
             messageOutgoingStatus.appendChild(messageDelivery);
             messageMeta.appendChild(messageOutgoingStatus);
-        } else if (this.#isGroup) {
+        } else if (chat.type === 'group') {
             const user = GLOBAL.state.users[message.from_user];
             let avatarDiv = document.createElement('div');
             avatarDiv.className = `avatar size-small no-photo color-bg-${ordinalLast(user.username)}`;
@@ -120,7 +120,7 @@ class DateMessageGroup {
     }
 
     appendMessage(message) {
-        this.#html.appendChild(this.createMessage(message));
+        this.#html.appendChild(DateMessageGroup.createMessage(message));
     }
 
     appendMessageDiv(messageDiv) {
@@ -128,7 +128,7 @@ class DateMessageGroup {
     }
 
     insertMessage(message) {
-        this.#html.insertBefore(this.createMessage(message), this.#html.children[1]);
+        this.#html.insertBefore(DateMessageGroup.createMessage(message), this.#html.children[1]);
     } 
 
     insertMessageDiv(messageDiv) {
@@ -154,6 +154,7 @@ class DateMessageGroup {
         return this.#html.querySelectorAll('div.message').length;
     }
 }
+
 
 
 class ChatDisplay {
@@ -255,12 +256,10 @@ class ChatDisplay {
     insertMessage(message) {
         let firstMessageGroup = this.messageGroups[0];
         if (firstMessageGroup === undefined || !firstMessageGroup.compareDate(message.created_at)) {
-            firstMessageGroup = new DateMessageGroup(
-                message.created_at, this.chat.type === 'group'
-            );
+            firstMessageGroup = new DateMessageGroup(message.created_at);
             this.messageGroups.unshift(firstMessageGroup);
         }
-        const messageDiv = firstMessageGroup.createMessage(message);
+        const messageDiv = DateMessageGroup.createMessage(message);
         firstMessageGroup.insertMessageDiv(messageDiv);
         if (messageDiv.classList.contains('unread')) 
             messageObserver.observe(messageDiv);
@@ -269,15 +268,26 @@ class ChatDisplay {
     addMessage(message) {
         let lastMessageGroup = this.messageGroups[this.messageGroups.length - 1];
         if (lastMessageGroup === undefined || !lastMessageGroup.compareDate(message.created_at)) {
-            lastMessageGroup = new DateMessageGroup(
-                message.created_at, this.chat.type === 'group'
-            );
+            lastMessageGroup = new DateMessageGroup(message.created_at);
             this.messageGroups.push(lastMessageGroup);
         }
-        const messageDiv = lastMessageGroup.createMessage(message);
+        const messageDiv = DateMessageGroup.createMessage(message);
         lastMessageGroup.appendMessageDiv(messageDiv);
         if (messageDiv.classList.contains('unread')) 
             messageObserver.observe(messageDiv);
+    }
+
+    updateMessage(message) {
+        let messageDiv = $(`div.message[data-message-id=${message.id}]`)[0];
+        const messageGroup = messageDiv.parentNode;
+        const nextSibling = messageDiv.nextElementSibling;
+        if (messageDiv.classList.contains('unread'))
+            messageObserver.unobserve(messageDiv);
+        this.deleteMessage(message.id);
+        messageDiv = DateMessageGroup.createMessage(message);
+        if (messageDiv.classList.contains('unread'))
+            messageObserver.observe(messageDiv);        
+        messageGroup.insertBefore(messageDiv, nextSibling);
     }
 
     static scrollMessagesToBottom() {
@@ -285,15 +295,64 @@ class ChatDisplay {
         chatMessages.scrollTop = chatMessages.scrollHeight;    
     }
 
+    setReplyTo(messageId) {}
+
+    #createEditDiv(messageId) {
+        const message = GLOBAL.state.messages[this.chatId].find(
+            msg => msg.id === messageId
+        );
+        const messageActionDiv = document.createElement('div');
+        messageActionDiv.className = 'message-action'
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'button translucent faded round';
+        cancelButton.onclick = cancelMessageAction;
+        const cancelIcon = document.createElement('i');
+        cancelIcon.className = 'bi bi-x-lg';
+        const embedDiv = document.createElement('div');
+        embedDiv.className = 'embedded-message inside-input';
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+        const p = document.createElement('p');
+        p.innerText = message.text;
+        const messageTitle = document.createElement('div');
+        messageTitle.className = 'message-title';
+        messageTitle.innerText = 'Edit Message';
+        textDiv.appendChild(p);
+        textDiv.appendChild(messageTitle);
+        cancelButton.appendChild(cancelIcon);
+        embedDiv.appendChild(textDiv);
+        messageActionDiv.appendChild(cancelButton);
+        messageActionDiv.appendChild(embedDiv);
+        return messageActionDiv;
+    }
+
+    setEdit(messageId) {
+        ChatDisplay.clearMessageAction();
+        $('button#send-button > i')[0].className = 'bi bi-check-lg';
+        $('#middle-section > div')[0].insertBefore(
+            this.#createEditDiv(messageId), $('#message-input')[0]
+        );
+    }
+
+    static clearMessageAction() {
+        const middleSection = $('#middle-section > div')[0];
+        $('button#send-button > i')[0].className = 'bi bi-send';
+        for (let action of $('.message-action'))
+            middleSection.removeChild(action);
+        $('#editable-message-text')[0].innerHTML = '';
+    }
+
     display() { 
         this.#displayHeader(); this.#displayMessages();
-        ChatDisplay.scrollMessagesToBottom()
+        ChatDisplay.scrollMessagesToBottom();
     }
 
     hide() {
         $('#message-layout')[0].innerHTML = '';
         clearInterval(this.#statusIntervalId);
         messageObserver.disconnect();
+        ChatDisplay.clearMessageAction();
     }
 
     get length() {
@@ -316,6 +375,7 @@ class ChatDisplay {
         )[0].className = 'bi bi-check-all';
     }
 }
+
 
 
 class ChatListDisplay {
@@ -368,9 +428,7 @@ class ChatListDisplay {
             const fromUser = GLOBAL.state.users[lastMessage.from_user];
             const senderName = fromUser.id === GLOBAL.state.currentUserId ? 'You' : fromUser.username;
             lastMessageText.innerHTML = (
-                '<span class="sender-name">' + 
-                senderName + 
-                '</span><span class="colon">:</span> ' +
+                `<span class="sender-name">${senderName}</span>` +
                 lastMessageText.innerHTML
             )                
         }     
@@ -405,6 +463,61 @@ class ChatListDisplay {
 
     static hideSearch() {}
 }
+
+
+
+class Message {
+    _createData(text) {
+        const state = GLOBAL.state;
+        return {
+            chat_id: GLOBAL.activeChatDisplay.chatId,
+            user_id: state.currentUserId, is_service: false,
+            text: text, reply_to: null, seen_by: [state.currentUserId],
+            created_at: strftime("%Y-%m-%dT%H:%M:%S", toUTC(new Date()))
+        };
+    }
+
+    _getEvent() {
+        return 'message';
+    }
+
+    send(text) {
+        GLOBAL.socket.emit(this._getEvent(), this._createData(text));        
+    }
+}
+
+
+class ReplyMessage extends Message {
+    constructor(toMessageId) {
+        super();
+        this.toMessageId = toMessageId;
+    }
+
+    _createData(...data) {
+        const message = super._createData(...data);
+        message.reply_to = this.toMessageId;
+        return message;
+    }
+}
+
+class EditMessage extends Message {
+    constructor(messageId) {
+        super();
+        this.messageId = messageId;
+    }
+
+    _createData(text) {
+        return {
+            message_id: this.messageId, text: text, 
+            edited_at: strftime("%Y-%m-%dT%H:%M:%S", toUTC(new Date()))
+        };
+    }
+
+    _getEvent() {
+        return 'edit_message';
+    }
+}
+
 
 
 class Dialog {
@@ -487,9 +600,14 @@ class DeleteMessageDialog extends Dialog {
 
 function hideActiveChat() {
     GLOBAL.activeChatDisplay?.hide();
-    GLOBAL.activeChatDisplay = null;
-    $('#editable-message-text')[0].innerText = '';
     ChatListDisplay.unselectActiveChat();
+    GLOBAL.activeChatDisplay = null;
+    $('#editable-message-text')[0].innerHTML = '';
+}
+
+function cancelMessageAction() {
+    GLOBAL.messageAction = null;
+    ChatDisplay.clearMessageAction();
 }
 
 
@@ -549,6 +667,7 @@ $('.chat').click(function() {
     let chatId = parseInt(this.getAttribute(GLOBAL.chatIdAttribute));
     GLOBAL.activeChatDisplay = new ChatDisplay(chatId);
     GLOBAL.activeChatDisplay.display();
+    $('#editable-message-text').focus();
 });
 
 
@@ -565,7 +684,8 @@ $(window).focus(function() {
 
 
 $('#chat-messages').scroll(async function() {
-    const chatId = GLOBAL.activeChatDisplay.chatId;
+    const chatId = GLOBAL.activeChatDisplay?.chatId;
+    if (!chatId) return;
     if ($('#chat-messages')[0].scrollTop > 500) return;
     if (GLOBAL.isLoadingMessages) return;
     GLOBAL.isLoadingMessages = true;
@@ -598,11 +718,17 @@ $('#chat-messages').scroll(async function() {
 });
 
 
+$('#editable-message-text').on('input', function() {
+    ChatDisplay.scrollMessagesToBottom();
+})
+
+
 $(document).on('keydown', function(e) {
     if (e.key == "Escape") {
         hideActiveChat();
         $(GLOBAL.middleSectionInsvisibleSelector)[0].classList.add(GLOBAL.invisibleClassName);
     } else if (e.key == "Enter") {
+        e.preventDefault(); e.stopPropagation();
         $('button#send-button').click();
     }
 });
@@ -612,7 +738,7 @@ $.contextMenu({
     selector: 'div.message', 
     build: function($trigger, event) {
         const messageDiv = $trigger[0];
-        const chat = GLOBAL.state.chats.byId[GLOBAL.activeChatDisplay.chatId];
+        const chat = GLOBAL.activeChatDisplay.chat;
         const message = GLOBAL.state.messages[chat.id].find(
             msg => msg.id === parseInt(messageDiv.getAttribute('data-message-id'))
         );
@@ -621,8 +747,11 @@ $.contextMenu({
         items.copy = {
             name: "Copy", icon: 'copy', 
             callback: function (itemKey, opt, rootMenu, originalEvent) {
-                let messageText = opt.$trigger[0].querySelector('p').textContent;
-                messageText = messageText.substring(0, messageText.lastIndexOf("\n"));
+                const messageId = parseInt(opt.$trigger[0].getAttribute('data-message-id'));
+                const chatId = GLOBAL.activeChatDisplay.chatId;
+                const messageText = GLOBAL.state.messages[chatId].find(
+                    msg => msg.id === messageId
+                ).text;
                 if (!navigator.clipboard) {
                     console.error('Copy: can not copy text to clipboard');
                     return false;
@@ -638,8 +767,16 @@ $.contextMenu({
             items.edit = {
                 name: "Edit", icon: "edit",
                 callback: function(itemKey, opt, rootMenu, originalEvent) {
-                    const messageDiv = opt.$trigger[0];
-                    // TODO: finish editing
+                    const messageId = parseInt(opt.$trigger[0].getAttribute('data-message-id'));
+                    const chatId = GLOBAL.activeChatDisplay.chatId;
+                    const messageText = GLOBAL.state.messages[chatId].find(
+                        msg => msg.id === messageId
+                    ).text;
+                    GLOBAL.activeChatDisplay.setEdit(messageId);
+                    $('#editable-message-text')[0].innerHTML = messageText;
+                    GLOBAL.messageAction = new EditMessage(messageId);
+                    ChatDisplay.scrollMessagesToBottom();
+                    $('#editable-message-text').focus();
                 }
             }
         if (chat.type === 'private' || chat.type === 'group' && isOwnMessage)
@@ -660,15 +797,10 @@ $('button#send-button').click(function() {
     const text = input.innerText.trim();
     if (!text)
         return;
-    const state = GLOBAL.state;
-    const message = {
-        chat_id: GLOBAL.activeChatDisplay.chatId,
-        user_id: state.currentUserId, is_service: false,
-        text: text, reply_to: null, seen_by: [state.currentUserId],
-        created_at: strftime("%Y-%m-%dT%H:%M:%S", toUTC(new Date()))
-    };
-    input.innerText = '';
-    GLOBAL.socket.emit('message', message);
+    GLOBAL.messageAction.send(text);
+    ChatDisplay.clearMessageAction();
+    GLOBAL.messageAction = null;
+    input.innerHTML = '';
 });
 
 
@@ -676,7 +808,6 @@ GLOBAL.socket.on('message', function(message) {
     const state = GLOBAL.state;
     state.messages[message.chat].push(message);
     GLOBAL.state = state;
-    debugger;
     if (message.chat === GLOBAL.activeChatDisplay?.chatId) {
         GLOBAL.activeChatDisplay.addMessage(message);
         ChatDisplay.scrollMessagesToBottom();
@@ -712,6 +843,7 @@ GLOBAL.socket.on('update_view', function(data) {
     if (messageArrId === -1) return;
     state.messages[data.chat_id][messageArrId].seen_by.push(data.user_id);
     GLOBAL.state = state;
+    if (GLOBAL.activeChatDisplay?.chatId !== data.chat_id) return;
     let fromUser = state.messages[data.chat_id][messageArrId].from_user;
     if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id) && 
             fromUser === state.currentUserId)
@@ -730,6 +862,22 @@ GLOBAL.socket.on('delete_message', function(data) {
         chat.unreadMessagesCount = Math.max(1, chat.unreadMessagesCount) - 1;
     state.messages[chat.id].splice(messageArrayIndex, 1);
     GLOBAL.state = state;
+    ChatListDisplay.updateChat(message.chat);
+    if (GLOBAL.activeChatDisplay?.chatId !== data.chat_id) return;
     if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id))
         GLOBAL.activeChatDisplay.deleteMessage(data.message_id);
+});
+
+GLOBAL.socket.on('edit_message', function(data) {
+    const state = GLOBAL.state;
+    const message = state.messages[data.chat_id].find(
+        msg => msg.id === data.message_id
+    );
+    if (message === -1) return;
+    message.edited_at = data.edited_at; message.text = data.text;
+    GLOBAL.state = state;
+    ChatListDisplay.updateChat(message.chat);
+    if (GLOBAL.activeChatDisplay?.chatId !== data.chat_id) return;
+    if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id))
+        GLOBAL.activeChatDisplay.updateMessage(message);
 });

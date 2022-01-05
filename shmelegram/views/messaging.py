@@ -15,10 +15,10 @@ def datetime_to_str(dt: datetime) -> str:
 
 @socketio.event
 def edit_message(data: dict[str, Any]):
-    message_id = data['message_id']
-    message = Message.get(message_id)
-    text = data['text']
-    message.text = text
+    message = Message.get(data['message_id'])
+    edited_at = datetime.strptime(data['edited_at'], "%Y-%m-%dT%H:%M:%S")
+    message.text = data['text']
+    message.edited_at = edited_at
     message.save()
     emit(
         'edit_message', data | {"chat_id": message.chat.id}, 
@@ -113,17 +113,6 @@ def leave_chat(data: dict[str, Any]):
     )
     message.save()
     send({"message_id": message.id}, json=True, to=chat_id)
-
-
-@socketio.event
-def edit_message(data: dict[str, Any]):
-    message_id = data['message_id']
-    text = data['text']
-    message = Message.get(message_id)
-    message.text = text
-    message.save()
-    chat_id = message.chat.id
-    emit('update_message', {'message': message_id, 'text': text}, to=chat_id)
 
 
 @socketio.on('message')
