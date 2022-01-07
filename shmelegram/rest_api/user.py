@@ -1,25 +1,25 @@
-from flask import request, url_for
-from sqlalchemy.orm import load_only
+from flask import request
 from flask_restful import Resource
-import requests
 
 from shmelegram import api
 from shmelegram.models import Chat, User
-from shmelegram.schema import UserSchema
+from shmelegram.service import ChatService, UserService
 
 
 class UserBaseApi(Resource):
     NOT_EXISTS_MESSAGE = "User {} does not exist"
     EMPTY_MESSAGE = {'success': True}
-    schema = UserSchema()
+    service = UserService
 
 
 @api.resource('/users')
 class UserListApi(UserBaseApi):
     def get(self):
-        return {'ids': [
-            x.id for x in User.query.options(load_only("id")).all()
-        ]}, 200
+        page = request.args.get('page', 1, int)
+        startswith_name = request.args.get('startwith', '', str)
+        return {'users': self.service.get_list(
+            startwith=startswith_name, page=page
+        )}, 200
 
 
 
@@ -30,7 +30,7 @@ class UserApi(UserBaseApi):
             user = User.get(user_id)
         except ValueError:
             return self.NOT_EXISTS_MESSAGE.format(user_id), 404
-        return self.schema.dump(user), 200
+        return self.service.to_json(user), 200
 
     def post(self, user_id):
         json = request.json or {}
@@ -43,7 +43,7 @@ class UserApi(UserBaseApi):
             return self.NOT_EXISTS_MESSAGE.format(user_id), 404
         user.last_online = last_online or user.last_online
         user.save()
-        return self.schema.dump(user), 202
+        return self.service.to_json(user), 202
 
     def delete(self, user_id):
         try:
@@ -57,16 +57,10 @@ class UserApi(UserBaseApi):
 @api.resource('/users/<int:user_id>/chats')
 class UserChatListApi(UserBaseApi):
     def get(self, user_id):
-        try:
-            user = User.get(user_id)
-        except ValueError:
+        if not User.exists(user_id):
             return self.NOT_EXISTS_MESSAGE.format(user_id), 404
         return {
-            'chats': [
-                requests.get(
-                    url_for('api.chatapi', chat_id=chat.id, _external=True)
-                ).json() for chat in user.chats
-            ]
+            'chats': self.service.get_user_chats(user_id)
         }, 200
 
 
@@ -108,13 +102,10 @@ class UserChatApi(UserBaseApi):
 @api.resource('/users/<int:user_id>/chats/<int:chat_id>/unread')
 class UnreadMessagesUserChatApi(UserBaseApi):
     def get(self, user_id: int, chat_id: int):
-        try:
-            user = User.get(user_id)
-        except ValueError:
+        if not User.exists(user_id):
             return self.NOT_EXISTS_MESSAGE.format(user_id), 404
-        try:
-            chat = Chat.get(chat_id)
-        except ValueError:
+        elif not Chat.exists(chat_id):
             return f"Chat {chat_id} does not exist", 404
-        messages = chat.get_unread_messages(user)
-        return {'messages': list(map(lambda x: x.id, messages))}, 200
+        return {'messages': ChatService.get_unread_messages(
+            chat_id, user_id
+        )}, 200

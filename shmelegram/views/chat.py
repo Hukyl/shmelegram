@@ -1,10 +1,9 @@
 from datetime import datetime
 
-from flask import render_template, session, Blueprint, make_response
+from flask import Blueprint, make_response, render_template, session
 
+from shmelegram.models import Message, User
 from shmelegram.views.auth import logged_in
-from shmelegram.models import User, Message
-
 
 bp = Blueprint('chat', __name__, url_prefix='/')
 

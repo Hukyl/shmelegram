@@ -1,14 +1,13 @@
-import requests
-from flask import jsonify, request, url_for
-from flask_restful import Resource, abort
+from flask import request
+from flask_restful import Resource
 
-from shmelegram import api, db, Config
-from shmelegram.models import Chat, Message, User
-from shmelegram.schema import ChatSchema, MessageSchema
+from shmelegram import api
+from shmelegram.models import Message
+from shmelegram.service import ChatService, MessageService
 
 
 class MessageBaseApi(Resource):
-    schema = MessageSchema()
+    service = MessageService
     NOT_EXISTS_MESSAGE = "Message {} does not exist"
     EMPTY_MESSAGE = {'success': True}
 
@@ -20,7 +19,7 @@ class MessageApi(MessageBaseApi):
             message = Message.get(message_id)
         except ValueError:
             return self.NOT_EXISTS_MESSAGE.format(message_id), 404
-        return self.schema.dump(message)
+        return self.service.to_json(message)
 
     def post(self, message_id: int):
         json = request.json or {}
@@ -44,12 +43,6 @@ class MessageApi(MessageBaseApi):
 class ChatMessagesApi(MessageBaseApi):
     def get(self, chat_id: int):
         page = request.args.get('page', 1, int)
-        chat = Chat.get(requests.get(
-            url_for('api.chatapi', chat_id=chat_id, _external=True)
-        ).json()['id'])
-        messages = chat.messages.offset(
-            (page - 1) * Config.MESSAGE_PAGE_SIZE
-        ).limit(Config.MESSAGE_PAGE_SIZE).all()
-        return {'messages': [
-            self.schema.dump(message) for message in messages
-        ]}
+        return {'messages': ChatService.get_chat_messages(
+            chat_id, page=page
+        )}, 200

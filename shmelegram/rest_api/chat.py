@@ -3,11 +3,11 @@ from flask_restful import Resource
 
 from shmelegram import api
 from shmelegram.models import Chat
-from shmelegram.schema import ChatSchema
+from shmelegram.service import ChatService
 
 
 class ChatBaseApi(Resource):
-    schema = ChatSchema(exclude=['messages'])
+    service = ChatService
 
 
 @api.resource('/chats/<int:chat_id>')
@@ -26,7 +26,7 @@ class ChatApi(ChatBaseApi):
             chat = Chat.get(chat_id)
         except ValueError:
             return self.NOT_EXISTS_MESSAGE.format(chat_id), 404
-        return self.schema.dump(chat), 200
+        return ChatService.to_json(chat), 200
 
     def post(self, chat_id):
         """
@@ -41,7 +41,7 @@ class ChatApi(ChatBaseApi):
         except ValueError:
             return self.NOT_EXISTS_MESSAGE.format(chat_id), 404
         chat.update(json)
-        return self.schema.dump(chat), 202
+        return ChatService.to_json(chat), 202
 
     def delete(self, chat_id):
         """
@@ -61,8 +61,8 @@ class ChatApi(ChatBaseApi):
 @api.resource('/chats')
 class ChatListApi(ChatBaseApi):
     def get(self):
-        json = request.json or {}
-        startswith_name = json.get('startwith', '')
-        return {'chats': [
-            self.schema.dump(chat) for chat in Chat.startwith(startswith_name)
-        ]}, 200
+        page = request.args.get('page', 1, int)
+        startswith_name = request.args.get('startwith', '', str)
+        return {'chats': self.service.get_list(
+            startwith=startswith_name, page=page
+        )}, 200

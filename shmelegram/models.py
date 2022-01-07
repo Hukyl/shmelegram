@@ -1,17 +1,16 @@
 from __future__ import annotations
+
 from datetime import datetime as dt
 from hashlib import sha256
-from typing import Any, NoReturn, List, Optional
+from typing import Any, List, NoReturn, Optional
 
-from sqlalchemy.sql import func
-from sqlalchemy.orm import load_only, validates, relationship, backref
+from sqlalchemy.ext.hybrid import hybrid_method, hybrid_property
+from sqlalchemy.orm import backref, load_only, relationship, validates
 from sqlalchemy.schema import CheckConstraint
-from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
+from sqlalchemy.sql import func
 
-from shmelegram import db
+from shmelegram import db, utils
 from shmelegram.config import ChatKind
-from shmelegram import utils
-
 
 chat_membership = db.Table(
     'chat_membership', db.Model.metadata,
@@ -23,8 +22,8 @@ chat_membership = db.Table(
     )
 )
 
-message_views = db.Table(
-    'message_views', db.Model.metadata, 
+message_view = db.Table(
+    'message_view', db.Model.metadata, 
     db.Column(
         'user_id', db.Integer, db.ForeignKey('user.id', ondelete="CASCADE")
     ), 
@@ -35,7 +34,7 @@ message_views = db.Table(
 )
 
 
-class BaseMixin:
+class ModelMixin:
     @classmethod
     def exists(cls, id_: int) -> bool:
         """
@@ -57,7 +56,7 @@ class BaseMixin:
         db.session.add(self)
 
     @classmethod
-    def get(cls, id_: int) -> BaseMixin:        
+    def get(cls, id_: int) -> ModelMixin:
         """
         Get model by some id
 
@@ -77,7 +76,7 @@ class BaseMixin:
         return model
 
     @classmethod
-    def get_or_none(cls, id_: int) -> Optional[BaseMixin]:        
+    def get_or_none(cls, id_: int) -> Optional[ModelMixin]:        
         """
         Get model by some id. If this id does not exist, return None
 
@@ -98,7 +97,7 @@ class BaseMixin:
         db.session.flush()
 
 
-class User(db.Model, BaseMixin):
+class User(db.Model, ModelMixin):
     __tablename__ = 'user'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -138,6 +137,15 @@ class User(db.Model, BaseMixin):
         return db.session.query(User.id).filter_by(
                 username=username).first() is not None
 
+    @classmethod
+    def startwith(cls, name: str = '', /, *, query: bool = False) -> bool:
+        users = cls.query.filter(
+            cls.username.startswith(name)
+        )
+        if not query:
+            users = users.all()
+        return users
+
     @hybrid_method
     def check_password(self, password: str) -> bool:
         return sha256(password.encode('utf-8')).hexdigest() == self.password
@@ -155,7 +163,7 @@ class User(db.Model, BaseMixin):
         return sha256(value.encode('utf-8')).hexdigest()
 
 
-class Chat(db.Model, BaseMixin):
+class Chat(db.Model, ModelMixin):
     __tablename__ = 'chat'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -164,7 +172,7 @@ class Chat(db.Model, BaseMixin):
 
     members = relationship(
         'User', secondary=chat_membership, passive_deletes=True,
-        backref=backref('chats', lazy='dynamic'), lazy='dynamic'
+        backref=backref('chats', lazy='dynamic')
     )
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',
@@ -194,7 +202,7 @@ class Chat(db.Model, BaseMixin):
 
     @hybrid_property
     def member_count(self) -> int:
-        return User.query.with_parent(self).count()
+        return len(self.members)
 
     def add_member(self, user: User) -> True:
         self.members.append(user)
@@ -215,7 +223,7 @@ class Chat(db.Model, BaseMixin):
         Returns:
             List[Message]
         """
-        if user not in self.members.all():
+        if user not in self.members:
             raise ValueError('cannot get messages by non-member user')
         return self.messages.filter(~Message.seen_by.any(User.id == user.id))\
             .options(load_only("id")).all()
@@ -223,7 +231,7 @@ class Chat(db.Model, BaseMixin):
     def get_private_title(self, user: User) -> str:
         if self.kind is not ChatKind.PRIVATE:
             raise ValueError("cannot get private title of non-private chat")
-        members = list(self.members.all())
+        members = list(self.members)
         if user not in members:
             raise ValueError('cannot get title for non-member user')
         members.remove(user)
@@ -239,10 +247,13 @@ class Chat(db.Model, BaseMixin):
         return chat
 
     @classmethod
-    def startwith(cls, name: str = '', /) -> bool:
-        return cls.query.filter(
+    def startwith(cls, name: str = '', /, *, query: bool = False) -> bool:
+        chats = cls.query.filter(
             cls.title.startswith(name)
-        ).all()
+        )
+        if not query:
+            chats = chats.all()
+        return chats
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + (
@@ -250,7 +261,7 @@ class Chat(db.Model, BaseMixin):
         )
 
 
-class Message(db.Model, BaseMixin):
+class Message(db.Model, ModelMixin):
     __tablename__ = 'message'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -259,7 +270,9 @@ class Message(db.Model, BaseMixin):
         db.Integer, db.ForeignKey('chat.id', ondelete="CASCADE")
     )
     is_service = db.Column(db.Boolean, nullable=False, default=False)
-    reply_to_id = db.Column(db.Integer, db.ForeignKey('message.id'))
+    reply_to_id = db.Column(
+        db.Integer, db.ForeignKey('message.id', ondelete="SET NULL")
+    )
     text = db.Column(db.String(4096), nullable=False)
     created_at = db.Column(
         db.DateTime(), server_default=func.current_timestamp()
@@ -273,7 +286,7 @@ class Message(db.Model, BaseMixin):
         'User', uselist=False, foreign_keys=[from_user_id]
     )
     seen_by = relationship(
-        'User', secondary=message_views, lazy='dynamic', 
+        'User', secondary=message_view, lazy='dynamic', 
         passive_deletes=True,
     )
     reply_to = relationship('Message', remote_side=[id])
@@ -282,7 +295,7 @@ class Message(db.Model, BaseMixin):
     def validate_view(self, key, user: User, is_remove: bool):
         if is_remove:
             raise ValueError('not allowed to remove view')
-        elif user not in self.chat.members.all():
+        elif user not in self.chat.members:
             raise ValueError('cannot add view by non-member user')
         return user
 

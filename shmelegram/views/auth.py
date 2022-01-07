@@ -1,12 +1,10 @@
 from functools import wraps
 
-from flask import (
-    Blueprint, flash, redirect, render_template, request, 
-    session, url_for, g
-)
+from flask import (Blueprint, flash, g, redirect, render_template, request,
+                   session, url_for)
 
+from shmelegram import utils
 from shmelegram.models import User
-from shmelegram import db, utils
 
 
 def logged_in(func):

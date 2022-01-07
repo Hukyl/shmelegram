@@ -1,15 +1,169 @@
+class Api {
+    static async getMessage(messageId) {
+        let message = null;
+        await $.ajax({
+            url: `/api/messages/${messageId}`,
+            type: 'GET',
+            success: function(response) { message = response; },
+            error: function() { message = null; }
+        });
+        return message;
+    }
+
+    static async getUser(userId) {
+        let user = null;
+        await $.ajax({
+            url: `/api/users/${userId}`,
+            type: 'GET',
+            success: function(response) { 
+                user = response; 
+                delete user.password;
+            },
+            error: function() { user = null; }
+        });
+        return user;
+    }
+
+    static async getChat(chatId) {
+        let chat = null;
+        await $.ajax({
+            url: `/api/chats/${chatId}`,
+            type: 'GET',
+            success: function(response) { chat = response; },
+            error: function() { chat = null; }
+        });
+        return chat;
+    }
+
+    static async getChatMessages(chatId, page = 1) {
+        let messages = null;
+        await $.ajax({
+            url: `api/messages/chat/${chatId}?page=${page}`,
+            type: "GET",
+            success: function(response) { messages = response.messages.reverse(); },
+            error: function() { messages = {}; }            
+        });
+        return messages;   
+    }
+
+    static async getUnreadMessagesCount(chatId, userId) {
+        let unreadMessagesCount = null;
+        await $.ajax({
+            url: `api/users/${userId}/chats/${chatId}/unread`,
+            type: "GET",
+            success: function(response) { unreadMessagesCount = response.messages.length; },          
+        });
+        return unreadMessagesCount;
+    }
+}
+
+
+class State {
+    #state;
+
+    constructor() {
+        this.#state = JSON.parse(localStorage.getItem('global-state'));
+    }
+
+    getMessage(chatId, messageId) {
+        return this.#state.messages[chatId]?.find(msg => msg.id === messageId);
+    }
+
+    getChatMessages(chatId) {
+        return this.#state.messages[chatId];
+    }
+
+    getLastMessage(chatId) {
+        const messages = this.getChatMessages(chatId);
+        if (!messages) return null;
+        return messages[messages.length - 1];
+    }
+
+    getUser(userId) {
+        return this.#state.users[userId];
+    }
+
+    getChat(chatId) {
+        return this.#state.chats.byId[chatId];
+    }
+
+    userExists(userId) {
+        return this.#state.users.hasOwnProperty(userId);
+    }
+
+    messageExists(chatId, messageId) {
+        return this.getMessage(chatId, messageId) ? true : false;
+    }
+
+    removeChat(chatId) {}
+
+    appendChat(chatData) {}
+
+    insertMessage(messageData) {
+        const chatMessages = this.getChatMessages(messageData.chat);
+        if (!chatMessages) return false;
+        chatMessages.unshift(messageData);
+        return true;
+    }
+
+    appendMessage(messageData) {
+        const chatMessages = this.getChatMessages(messageData.chat);
+        if (!chatMessages) return false;
+        chatMessages.push(messageData);
+        return true;
+    } 
+
+    unshiftMessages(messages) {
+        for (let message of messages)
+            this.insertMessage(message);
+    }
+
+    pushMessages(messages) {
+        for (let message of messages)
+            this.appendMessage(message);
+    }
+
+    removeMessage(chatId, messageId) {
+        const chatMessages = this.getChatMessages(chatId);
+        if (!chatMessages) return false;
+        const messageArrayIndex = chatMessages.findIndex(
+            msg => msg.id == messageId
+        );
+        if (messageArrayIndex === -1) return false;
+        chatMessages.splice(messageArrayIndex, 1); 
+        return true;
+    }
+
+    getOnlineMembers(chatId) {
+        const chat = this.getChat(chatId);
+        let count = 0;
+        for (let memberId of chat.members) {
+            if (this.getUser(memberId).last_online === null)
+                count++;
+        }
+        return count;
+    }
+
+    get currentUserId() { return this.#state.currentUserId; }
+
+    save() {
+        localStorage.setItem('global-state', JSON.stringify(this.#state));        
+    }
+
+    extend(data) {
+        this.#state = {...this.#state, ...data};
+        this.save();
+    }    
+}
+
+
 const GLOBAL = {
     invisibleClassName: 'invisible', activeChatClassName: 'active-chat',
     middleSectionInsvisibleSelector: 'div#middle-section > div',
     chatIdAttribute: 'data-id', chatSelector: '.chat',
     activeChatDisplay: null, messageAPILength: 50,
     isLoadingMessages: false, __messageAction: null,
-    __state: JSON.parse(localStorage.getItem('global-state')),
-    get state() { return this.__state },
-    set state(data) {
-        this.__state = data;
-        localStorage.setItem('global-state', JSON.stringify(data));
-    }, 
+    state: new State(),
     get messageAction() {return this.__messageAction === null ? new Message() : this.__messageAction},
     set messageAction(data) {this.__messageAction = data},
     socket: io.connect(
@@ -22,21 +176,17 @@ const GLOBAL = {
 
 
 const messageObserver = new IntersectionObserver(function(entries, observer) {
-    const state = GLOBAL.state;
     const chatId = parseInt($(`.${GLOBAL.activeChatClassName}`)[0].getAttribute('data-id'));
     for (let entry of entries) {
         let messageId = parseInt(entry.target.getAttribute('data-message-id'));
-        GLOBAL.socket.emit('add_view', {
-            message_id: messageId, user_id: state.currentUserId
-        });
+        GLOBAL.socket.emit('add_view', {message_id: messageId});
         entry.target.classList.remove('unread');
         observer.unobserve(entry.target);
-        let message = state.messages[chatId].find(message => message.id === messageId);
-        message.seen_by.push(state.currentUserId);
-        state.chats.byId[chatId].unreadMessagesCount = Math.max(
-            1, state.chats.byId[chatId].unreadMessagesCount
-        ) - 1;
-        GLOBAL.state = state;
+        let message = GLOBAL.state.getMessage(chatId, messageId);
+        message.seen_by.push(GLOBAL.state.currentUserId);
+        const chat = GLOBAL.state.getChat(chatId);
+        chat.unreadMessagesCount = Math.max(1, chat.unreadMessagesCount) - 1;
+        GLOBAL.state.save();
         ChatListDisplay.updateChatUnreadCount(chatId);
     }
 }, {threshold: 1})
@@ -46,16 +196,14 @@ class DateMessageGroup {
     #html;
     date;
 
-    constructor(date,) {
+    constructor(date) {
         this.date = date;
         this.#html = document.createElement('div');
         this.#html.classList.add('message-date-group');
-        let stickyDate = document.createElement('div');
+        const stickyDate = DateMessageGroup.createServiceMessage(
+            getDateGroupTime(Date.parse(date))
+        );
         stickyDate.classList.add('sticky-date');
-        let span = document.createElement('span');
-        span.classList.add('text-white');
-        span.innerText = getDateGroupTime(Date.parse(date));
-        stickyDate.appendChild(span);
         this.#html.appendChild(stickyDate);
     }
 
@@ -63,8 +211,20 @@ class DateMessageGroup {
 
     isEmpty() { return this.#html.children.length <= 1}
 
-    static createMessage(message) {
-        const chat = GLOBAL.state.chats.byId[message.chat];
+    static createServiceMessage(text) {
+        const serviceMessage = document.createElement('div');
+        serviceMessage.className = 'message service';
+        const span = document.createElement('span');
+        span.classList.add('text-white');
+        span.innerText = text;
+        serviceMessage.appendChild(span);
+        return serviceMessage;
+    }
+
+    static async createMessage(message) {
+        if (message.is_service)
+            return DateMessageGroup.createServiceMessage(message.text);
+        const chat = GLOBAL.state.getChat(message.chat);
         let messageNode = document.createElement('div');
         messageNode.id = `message${message.id}`;
         messageNode.setAttribute('data-message-id', message.id);
@@ -88,6 +248,25 @@ class DateMessageGroup {
                 '\nedited: ' + 
                 strftime('%b %d, %Y, %I:%M:%S %p', fromUTCString(message.edited_at))
             )
+        if (message.reply_to) {
+            let replyToMessage = GLOBAL.state.getMessage(chat.id, message.reply_to);
+            if (!replyToMessage)
+                replyToMessage = await Api.getMessage(chat.id, message.reply_to);
+            const embeddedMessage = document.createElement('div');
+            embeddedMessage.className = 'embedded-message';
+            const embeddedText = document.createElement('div');
+            embeddedText.className = 'message-text';
+            const embeddedP = document.createElement('p');
+            embeddedP.innerText = replyToMessage.text;
+            const embeddedTitle = document.createElement('div');
+            embeddedTitle.className = 'message-title';
+            const user = await Api.getUser(replyToMessage.from_user);
+            embeddedTitle.innerText = user.username;
+            embeddedText.appendChild(embeddedP);
+            embeddedText.appendChild(embeddedTitle);
+            embeddedMessage.appendChild(embeddedText);
+            content.appendChild(embeddedMessage);
+        }
         messageMeta.appendChild(messageTime);
         textContent.appendChild(messageMeta);
         if (message.from_user === GLOBAL.state.currentUserId) {
@@ -101,7 +280,7 @@ class DateMessageGroup {
             messageOutgoingStatus.appendChild(messageDelivery);
             messageMeta.appendChild(messageOutgoingStatus);
         } else if (chat.type === 'group') {
-            const user = GLOBAL.state.users[message.from_user];
+            const user = GLOBAL.state.getUser(message.from_user);
             let avatarDiv = document.createElement('div');
             avatarDiv.className = `avatar size-small no-photo color-bg-${ordinalLast(user.username)}`;
             avatarDiv.innerText = user.username.charAt(0);
@@ -119,16 +298,16 @@ class DateMessageGroup {
         return messageNode;
     }
 
-    appendMessage(message) {
-        this.#html.appendChild(DateMessageGroup.createMessage(message));
+    async appendMessage(message) {
+        this.#html.appendChild(await DateMessageGroup.createMessage(message));
     }
 
     appendMessageDiv(messageDiv) {
         this.#html.appendChild(messageDiv);
     }
 
-    insertMessage(message) {
-        this.#html.insertBefore(DateMessageGroup.createMessage(message), this.#html.children[1]);
+    async insertMessage(message) {
+        this.#html.insertBefore(await DateMessageGroup.createMessage(message), this.#html.children[1]);
     } 
 
     insertMessageDiv(messageDiv) {
@@ -167,17 +346,11 @@ class ChatDisplay {
     }
 
     get chat() {
-        return GLOBAL.state.chats.byId[this.chatId];
+        return GLOBAL.state.getChat(this.chatId);
     }
 
     get onlineMembers() {
-        const state = GLOBAL.state;
-        let count = 0;
-        for (let memberId of this.chat.members) {
-            if (state.users[memberId].last_online === null)
-                count++;
-        }
-        return count;
+        return GLOBAL.state.getOnlineMembers(this.chatId);
     }
 
     updateStatus() {
@@ -208,7 +381,7 @@ class ChatDisplay {
         let totalMembers = $('#middle-header > .info > .status > span')[0];
         let chatMembers = this.chat.members.slice();
         delete chatMembers[chatMembers.indexOf(GLOBAL.state.currentUserId)];
-        const companionUser = GLOBAL.state.users[chatMembers.find(el => el !== undefined)];
+        const companionUser = GLOBAL.state.getUser(chatMembers.find(el => el !== undefined));
         if (companionUser.last_online === null)
             totalMembers.innerText = "online";
         else
@@ -233,17 +406,17 @@ class ChatDisplay {
             );
     }
 
-    #displayMessages() {
+    async #displayMessages() {
         // display chat messages in middle section
         const layout = $('#message-layout')[0];
-        let messages = GLOBAL.state.messages[this.chatId];
+        const messages = GLOBAL.state.getChatMessages(this.chatId);
         for (
                 let i = messages.length - 1; 
                 i >= Math.max(0, messages.length - GLOBAL.messageAPILength); 
                 i--
             ) {
             let message = messages[i];
-            this.insertMessage(message);
+            await this.insertMessage(message);
         }
         for (let messageGroup of this.messageGroups)
             layout.appendChild(messageGroup.node);
@@ -253,54 +426,55 @@ class ChatDisplay {
         return this.messageGroups.some(group => group.isMessageDisplayed(messageId));
     }
 
-    insertMessage(message) {
+    async insertMessage(message) {
         let firstMessageGroup = this.messageGroups[0];
         if (firstMessageGroup === undefined || !firstMessageGroup.compareDate(message.created_at)) {
             firstMessageGroup = new DateMessageGroup(message.created_at);
             this.messageGroups.unshift(firstMessageGroup);
         }
-        const messageDiv = DateMessageGroup.createMessage(message);
+        const messageDiv = await DateMessageGroup.createMessage(message);
         firstMessageGroup.insertMessageDiv(messageDiv);
         if (messageDiv.classList.contains('unread')) 
             messageObserver.observe(messageDiv);
     }
 
-    addMessage(message) {
+    async addMessage(message) {
         let lastMessageGroup = this.messageGroups[this.messageGroups.length - 1];
         if (lastMessageGroup === undefined || !lastMessageGroup.compareDate(message.created_at)) {
             lastMessageGroup = new DateMessageGroup(message.created_at);
             this.messageGroups.push(lastMessageGroup);
         }
-        const messageDiv = DateMessageGroup.createMessage(message);
+        const messageDiv = await DateMessageGroup.createMessage(message);
         lastMessageGroup.appendMessageDiv(messageDiv);
         if (messageDiv.classList.contains('unread')) 
             messageObserver.observe(messageDiv);
     }
 
-    updateMessage(message) {
+    async updateMessage(message) {
         let messageDiv = $(`div.message[data-message-id=${message.id}]`)[0];
         const messageGroup = messageDiv.parentNode;
         const nextSibling = messageDiv.nextElementSibling;
         if (messageDiv.classList.contains('unread'))
             messageObserver.unobserve(messageDiv);
         this.deleteMessage(message.id);
-        messageDiv = DateMessageGroup.createMessage(message);
+        messageDiv = await DateMessageGroup.createMessage(message);
         if (messageDiv.classList.contains('unread'))
-            messageObserver.observe(messageDiv);        
+            messageObserver.observe(messageDiv);
         messageGroup.insertBefore(messageDiv, nextSibling);
     }
+
+    deleteMessage(messageId) {
+        const messageDiv = $(`div.message[data-message-id=${messageId}]`)[0];
+        messageObserver.unobserve(messageDiv);
+        messageDiv.parentNode.removeChild(messageDiv);
+    }    
 
     static scrollMessagesToBottom() {
         let chatMessages = $('#chat-messages')[0];
         chatMessages.scrollTop = chatMessages.scrollHeight;    
     }
 
-    setReplyTo(messageId) {}
-
-    #createEditDiv(messageId) {
-        const message = GLOBAL.state.messages[this.chatId].find(
-            msg => msg.id === messageId
-        );
+    #createActionDiv() {
         const messageActionDiv = document.createElement('div');
         messageActionDiv.className = 'message-action'
         const cancelButton = document.createElement('button');
@@ -314,17 +488,39 @@ class ChatDisplay {
         const textDiv = document.createElement('div');
         textDiv.className = 'message-text';
         const p = document.createElement('p');
-        p.innerText = message.text;
         const messageTitle = document.createElement('div');
         messageTitle.className = 'message-title';
-        messageTitle.innerText = 'Edit Message';
         textDiv.appendChild(p);
         textDiv.appendChild(messageTitle);
         cancelButton.appendChild(cancelIcon);
         embedDiv.appendChild(textDiv);
         messageActionDiv.appendChild(cancelButton);
         messageActionDiv.appendChild(embedDiv);
-        return messageActionDiv;
+        return messageActionDiv;        
+    }
+
+    #createReplyDiv(messageId) {
+        const message = GLOBAL.state.getMessage(this.chatId, messageId);
+        const user = GLOBAL.state.getUser(message.from_user);
+        const actionDiv = this.#createActionDiv();
+        actionDiv.querySelector('p').innerText = message.text;
+        actionDiv.querySelector('.message-title').innerText = user.username;
+        return actionDiv;
+    }
+
+    setReplyTo(messageId) {
+        ChatDisplay.clearMessageAction();
+        $('#middle-section > div')[0].insertBefore(
+            this.#createReplyDiv(messageId), $('#message-input')[0]
+        );
+    }
+
+    #createEditDiv(messageId) {
+        const message = GLOBAL.state.getMessage(this.chatId, messageId);
+        const actionDiv = this.#createActionDiv();
+        actionDiv.querySelector('p').innerText = message.text;
+        actionDiv.querySelector('.message-title').innerText = 'Edit Message';
+        return actionDiv;
     }
 
     setEdit(messageId) {
@@ -343,8 +539,9 @@ class ChatDisplay {
         $('#editable-message-text')[0].innerHTML = '';
     }
 
-    display() { 
-        this.#displayHeader(); this.#displayMessages();
+    async display() { 
+        this.#displayHeader(); 
+        await this.#displayMessages();
         ChatDisplay.scrollMessagesToBottom();
     }
 
@@ -361,12 +558,6 @@ class ChatDisplay {
 
     get firstMessage() {
         return document.querySelector('div.message');
-    }
-
-    deleteMessage(messageId) {
-        const messageDiv = $(`div.message[data-message-id=${messageId}]`)[0];
-        messageObserver.unobserve(messageDiv);
-        messageDiv.parentNode.removeChild(messageDiv);
     }
 
     setMessageAsViewed(messageId) {
@@ -392,7 +583,7 @@ class ChatListDisplay {
     }
 
     static updateChat(chatId) {
-        const chat = GLOBAL.state.chats.byId[chatId];
+        const chat = GLOBAL.state.getChat(chatId);
         if (!chat) return;
         const chatDiv = $(`#chat-list > .chat[data-id=${chatId}]`)[0];
         if (!chatDiv) return;
@@ -402,7 +593,7 @@ class ChatListDisplay {
     }
 
     static updateChatName(chatId) {
-        const chat = GLOBAL.state.chats.byId[chatId];
+        const chat = GLOBAL.state.getChat(chatId);
         const chatDiv = $(`#chat-list > .chat[data-id=${chatId}]`)[0];        
         const chatAvatar = chatDiv.querySelector('.status > .avatar');
         chatAvatar.className = chatAvatar.className.replace(
@@ -416,8 +607,8 @@ class ChatListDisplay {
     }
 
     static updateChatLastMessage(chatId) {
-        const chat = GLOBAL.state.chats.byId[chatId];
-        const lastMessage = GLOBAL.state.messages[chatId][GLOBAL.state.messages[chatId].length - 1];
+        const chat = GLOBAL.state.getChat(chatId);
+        const lastMessage = GLOBAL.state.getLastMessage(chatId);
         $(`#chat-list > .chat[data-id=${chatId}] .title span`)[0].innerText = diffNow(
             lastMessage.created_at
         );
@@ -425,7 +616,7 @@ class ChatListDisplay {
         const lastMessageText = subtitle.querySelector('p');
         lastMessageText.innerText = lastMessage.text;
         if (chat.type === 'group') {
-            const fromUser = GLOBAL.state.users[lastMessage.from_user];
+            const fromUser = GLOBAL.state.getUser(lastMessage.from_user);
             const senderName = fromUser.id === GLOBAL.state.currentUserId ? 'You' : fromUser.username;
             lastMessageText.innerHTML = (
                 `<span class="sender-name">${senderName}</span>` +
@@ -435,7 +626,7 @@ class ChatListDisplay {
     }
 
     static updateChatUnreadCount(chatId) {
-        const chat = GLOBAL.state.chats.byId[chatId];
+        const chat = GLOBAL.state.getChat(chatId);
         const unreadMessagesCount = $(
             `#chat-list > .chat[data-id=${chatId}] div.unread-messages-count`
         )[0];
@@ -447,7 +638,7 @@ class ChatListDisplay {
     }
 
     static moveToTop(chatId) {
-        const chat = GLOBAL.state.chats.byId[chatId];
+        const chat = GLOBAL.state.getChat(chatId);
         if (!chat) return;
         const chatDiv = $(`#chat-list > .chat[data-id=${chatId}]`)[0];
         if (!chatDiv) return;
@@ -468,11 +659,9 @@ class ChatListDisplay {
 
 class Message {
     _createData(text) {
-        const state = GLOBAL.state;
         return {
-            chat_id: GLOBAL.activeChatDisplay.chatId,
-            user_id: state.currentUserId, is_service: false,
-            text: text, reply_to: null, seen_by: [state.currentUserId],
+            chat_id: GLOBAL.activeChatDisplay.chatId, is_service: false,
+            text: text, reply_to: null, seen_by: [GLOBAL.state.currentUserId],
             created_at: strftime("%Y-%m-%dT%H:%M:%S", toUTC(new Date()))
         };
     }
@@ -559,7 +748,7 @@ class Dialog {
         }
         setTimeout(function() {
             $('div#portals')[0].innerHTML = '';
-        }, 150);
+        }, 100);
     }
 }
 
@@ -595,6 +784,38 @@ class DeleteMessageDialog extends Dialog {
         this.messageId = messageId;
     }
 }
+
+class AddChatMembers extends Dialog {}
+
+class CreateChatName extends Dialog {
+    createNode() {
+        const node = super.createNode();
+        const title = node.querySelector('.modal-title');
+        title.innerText = 'Delete message';
+        const body = node.querySelector('.modal-body');
+        const footer = node.querySelector('.modal-footer');
+        const p = document.createElement('p');
+        p.innerText = 'Are you sure you want to delete this message?';
+        const buttonConfirm = document.createElement('button');
+        buttonConfirm.className = 'btn btn-danger';
+        buttonConfirm.innerText = 'Delete';
+        buttonConfirm.onclick = function(event) {
+            GLOBAL.socket.emit('create_chat', {message_id: this.messageId});
+            this.hide();
+        }.bind(this);
+        const buttonCancel = document.createElement('button');
+        buttonCancel.className = 'btn btn-secondary';
+        buttonCancel.innerText = 'Cancel';
+        buttonCancel.setAttribute('data-bs-dismiss', 'modal');
+        buttonCancel.onclick = this.hide;
+        body.appendChild(p); 
+        footer.appendChild(buttonConfirm); 
+        footer.appendChild(buttonCancel);
+        return node;
+    }
+}
+
+class ViewChatMembers extends Dialog {}
 
 
 
@@ -634,27 +855,16 @@ $(document).ready(async function() {
         data.chats.byId[chatId].title = chat.querySelector(
             '.info > .title > h3'
         ).textContent.trim()
-        await $.get(`api/messages/chat/${chatId}`)
-        .then(function(response) {
-            data.messages[chatId] = response.messages.reverse();
-        });
-        await $.get(`api/users/${data.currentUserId}/chats/${chatId}/unread`)
-        .then(function(response) {
-            data.chats.byId[chatId].unreadMessagesCount = response.messages.length;
-        });
-        await $.get(`api/chats/${chatId}`).then(function(response) {
-            data.chats.byId[chatId].members = response.members;
-        });
+        data.messages[chatId] = await Api.getChatMessages(chatId);
+        data.chats.byId[chatId].unreadMessagesCount = await Api.getUnreadMessagesCount(
+            chatId, data.currentUserId
+        );
+        data.chats.byId[chatId].members = (await Api.getChat(chatId)).members;
         for (let memberId of data.chats.byId[chatId].members) {
-            await $.get(`api/users/${memberId}`).then(function(response) {
-                data.users[memberId] = {
-                    id: response.id, username: response.username, 
-                    last_online: response.last_online
-                };
-            });
+            data.users[memberId] = await Api.getUser(memberId);
         }
         data.chats.listIds.push(chatId);
-        GLOBAL.state = {...GLOBAL.state, ...data};
+        GLOBAL.state.extend(data);
         ChatListDisplay.updateChatUnreadCount(chatId);
     }
 });
@@ -673,13 +883,11 @@ $('.chat').click(function() {
 
 $(window).blur(function() {
     // send request to update last_online
-    let userId = parseInt(GLOBAL.state.currentUserId);
-    GLOBAL.socket.emit('is_offline', {user_id: userId});
+    GLOBAL.socket.emit('is_offline');
 });
 $(window).focus(function() {
     // send request to set online status
-    let userId = parseInt(GLOBAL.state.currentUserId);
-    GLOBAL.socket.emit('is_online', {user_id: userId}); 
+    GLOBAL.socket.emit('is_online'); 
 });
 
 
@@ -689,30 +897,27 @@ $('#chat-messages').scroll(async function() {
     if ($('#chat-messages')[0].scrollTop > 500) return;
     if (GLOBAL.isLoadingMessages) return;
     GLOBAL.isLoadingMessages = true;
-    const totalMessageCount = GLOBAL.state.messages[chatId].length;
+    const totalMessageCount = GLOBAL.state.getChatMessages(chatId).length;
     const displayedMessageCount = GLOBAL.activeChatDisplay.length;
     if (displayedMessageCount === totalMessageCount) {
         const messagePage = Math.ceil(totalMessageCount / GLOBAL.messageAPILength) + 1;
-        let messages = null;
-        await $.get(`api/messages/chat/${chatId}?page=${messagePage}`).then(function(response) {
-            messages = response.messages;
-        });
+        let messages = await Api.getChatMessages(chatId, messagePage);
         if (messages.length === 0) {
             GLOBAL.isLoadingMessages = false;
             return;
         }
-        const state = GLOBAL.state;
-        state.messages[chatId].unshift(...messages.reverse());
-        GLOBAL.state = state;
+        GLOBAL.state.unshiftMessages(...messages.reverse());
+        GLOBAL.state.save();
     }
     const firstMessageId = parseInt(
         GLOBAL.activeChatDisplay.firstMessage.getAttribute('data-message-id')
     );
-    const firstMessageIndex = GLOBAL.state.messages[chatId].findIndex(
+    const messages = GLOBAL.state.getChatMessages(chatId);
+    const firstMessageIndex = messages.findIndex(
         element => element.id === firstMessageId
     );
     for (let i = firstMessageIndex - 1; i >= Math.max(0, firstMessageIndex - GLOBAL.messageAPILength); i--) {
-        GLOBAL.activeChatDisplay.insertMessage(GLOBAL.state.messages[chatId][i]);
+        GLOBAL.activeChatDisplay.insertMessage(messages[i]);
     }
     GLOBAL.isLoadingMessages = false;
 });
@@ -725,8 +930,15 @@ $('#editable-message-text').on('input', function() {
 
 $(document).on('keydown', function(e) {
     if (e.key == "Escape") {
-        hideActiveChat();
-        $(GLOBAL.middleSectionInsvisibleSelector)[0].classList.add(GLOBAL.invisibleClassName);
+        if (GLOBAL.__messageAction) {
+            cancelMessageAction();
+            GLOBAL.messageAction = null;
+        } else {
+            hideActiveChat();
+            $(GLOBAL.middleSectionInsvisibleSelector)[0].classList.add(
+                GLOBAL.invisibleClassName
+            );
+        }
     } else if (e.key == "Enter") {
         e.preventDefault(); e.stopPropagation();
         $('button#send-button').click();
@@ -739,19 +951,27 @@ $.contextMenu({
     build: function($trigger, event) {
         const messageDiv = $trigger[0];
         const chat = GLOBAL.activeChatDisplay.chat;
-        const message = GLOBAL.state.messages[chat.id].find(
-            msg => msg.id === parseInt(messageDiv.getAttribute('data-message-id'))
+        const message = GLOBAL.state.getMessage(
+            chat.id, parseInt(messageDiv.getAttribute('data-message-id'))
         );
         const isOwnMessage = message.from_user === GLOBAL.state.currentUserId;
         const items = {};
+        items.reply = {
+            name: "Reply", callback: function(itemKey, opt, rootMenu, originalEvent) {
+                const messageId = parseInt(opt.$trigger[0].getAttribute('data-message-id'));
+                const chatId = GLOBAL.activeChatDisplay.chatId;
+                GLOBAL.activeChatDisplay.setReplyTo(messageId);
+                GLOBAL.messageAction = new ReplyMessage(messageId);
+                ChatDisplay.scrollMessagesToBottom();
+                $('#editable-message-text').focus();
+            }
+        }
         items.copy = {
             name: "Copy", icon: 'copy', 
             callback: function (itemKey, opt, rootMenu, originalEvent) {
                 const messageId = parseInt(opt.$trigger[0].getAttribute('data-message-id'));
                 const chatId = GLOBAL.activeChatDisplay.chatId;
-                const messageText = GLOBAL.state.messages[chatId].find(
-                    msg => msg.id === messageId
-                ).text;
+                const messageText = GLOBAL.state.getMessage(chatId, messageId).text;
                 if (!navigator.clipboard) {
                     console.error('Copy: can not copy text to clipboard');
                     return false;
@@ -769,9 +989,7 @@ $.contextMenu({
                 callback: function(itemKey, opt, rootMenu, originalEvent) {
                     const messageId = parseInt(opt.$trigger[0].getAttribute('data-message-id'));
                     const chatId = GLOBAL.activeChatDisplay.chatId;
-                    const messageText = GLOBAL.state.messages[chatId].find(
-                        msg => msg.id === messageId
-                    ).text;
+                    const messageText = GLOBAL.state.getMessage(chatId, messageId).text;
                     GLOBAL.activeChatDisplay.setEdit(messageId);
                     $('#editable-message-text')[0].innerHTML = messageText;
                     GLOBAL.messageAction = new EditMessage(messageId);
@@ -804,20 +1022,17 @@ $('button#send-button').click(function() {
 });
 
 
-GLOBAL.socket.on('message', function(message) {
-    const state = GLOBAL.state;
-    state.messages[message.chat].push(message);
-    GLOBAL.state = state;
+GLOBAL.socket.on('message', async function(message) {
+    GLOBAL.state.appendMessage(message);
+    GLOBAL.state.save();
     if (message.chat === GLOBAL.activeChatDisplay?.chatId) {
-        GLOBAL.activeChatDisplay.addMessage(message);
-        ChatDisplay.scrollMessagesToBottom();
+        await GLOBAL.activeChatDisplay.addMessage(message);
         ChatListDisplay.updateChatLastMessage(message.chat);
+        ChatDisplay.scrollMessagesToBottom();
     } else {
-        const state = GLOBAL.state;
-        state.chats.byId[message.chat].unreadMessagesCount = Math.max(
-            0, state.chats.byId[message.chat].unreadMessagesCount
-        ) + 1;
-        GLOBAL.state = state;
+        const chat = GLOBAL.state.getChat(message.chat);
+        chat.unreadMessagesCount = Math.max(0, chat.unreadMessagesCount) + 1;
+        GLOBAL.state.save();
         ChatListDisplay.updateChat(message.chat);
     }
     ChatListDisplay.moveToTop(message.chat);
@@ -825,10 +1040,9 @@ GLOBAL.socket.on('message', function(message) {
 
 
 GLOBAL.socket.on('update_user_status', function(data) {
-    const state = GLOBAL.state;
-    if (state.users.hasOwnProperty(data.user_id)) {
-        state.users[data.user_id].last_online = data.last_online;
-        GLOBAL.state = state;
+    if (GLOBAL.state.userExists(data.user_id)) {
+        GLOBAL.state.getUser(data.user_id).last_online = data.last_online;
+        GLOBAL.state.save();
     }
     if (GLOBAL.activeChatDisplay?.chat.members.includes(data.user_id))
         GLOBAL.activeChatDisplay.updateStatus();
@@ -836,46 +1050,35 @@ GLOBAL.socket.on('update_user_status', function(data) {
 
 
 GLOBAL.socket.on('update_view', function(data) {
-    const state = GLOBAL.state;
-    const messageArrId = state.messages[data.chat_id].findIndex(
-        message => message.id === data.message_id
-    );
-    if (messageArrId === -1) return;
-    state.messages[data.chat_id][messageArrId].seen_by.push(data.user_id);
-    GLOBAL.state = state;
+    const message = GLOBAL.state.getMessage(data.chat_id, data.message_id);
+    if (!message) return;
+    message.seen_by.push(data.user_id);
+    GLOBAL.state.save();
     if (GLOBAL.activeChatDisplay?.chatId !== data.chat_id) return;
-    let fromUser = state.messages[data.chat_id][messageArrId].from_user;
     if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id) && 
-            fromUser === state.currentUserId)
+        message.from_user === GLOBAL.state.currentUserId)
         GLOBAL.activeChatDisplay.setMessageAsViewed(data.message_id);
 });
 
 GLOBAL.socket.on('delete_message', function(data) {
-    const state = GLOBAL.state;
-    const messageArrayIndex = state.messages[data.chat_id].findIndex(
-        msg => msg.id === data.message_id
-    );
-    if (messageArrayIndex === -1) return;
-    const message = state.messages[data.chat_id][messageArrayIndex];
-    const chat = state.chats.byId[data.chat_id];
-    if (!message.seen_by.includes(state.currentUserId))
+    const message = GLOBAL.state.getMessage(data.chat_id, data.message_id);
+    if (!message) return;
+    const chat = GLOBAL.state.getChat(data.chat_id);
+    if (!message.seen_by.includes(GLOBAL.state.currentUserId))
         chat.unreadMessagesCount = Math.max(1, chat.unreadMessagesCount) - 1;
-    state.messages[chat.id].splice(messageArrayIndex, 1);
-    GLOBAL.state = state;
-    ChatListDisplay.updateChat(message.chat);
+    GLOBAL.state.removeMessage(chat.id, message.id);
+    GLOBAL.state.save();
+    ChatListDisplay.updateChat(chat.id);
     if (GLOBAL.activeChatDisplay?.chatId !== data.chat_id) return;
     if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id))
         GLOBAL.activeChatDisplay.deleteMessage(data.message_id);
 });
 
 GLOBAL.socket.on('edit_message', function(data) {
-    const state = GLOBAL.state;
-    const message = state.messages[data.chat_id].find(
-        msg => msg.id === data.message_id
-    );
-    if (message === -1) return;
+    const message = GLOBAL.state.getMessage(data.chat_id, data.message_id);
+    if (!message) return;
     message.edited_at = data.edited_at; message.text = data.text;
-    GLOBAL.state = state;
+    GLOBAL.state.save();
     ChatListDisplay.updateChat(message.chat);
     if (GLOBAL.activeChatDisplay?.chatId !== data.chat_id) return;
     if (GLOBAL.activeChatDisplay.isMessageDisplayed(data.message_id))

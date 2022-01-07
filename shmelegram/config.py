@@ -1,31 +1,42 @@
+from os import getenv, urandom
 from enum import IntEnum
 
 from dotenv import load_dotenv
 
-
 load_dotenv()
-os = __import__("os")
 
 
-user = os.environ.get('MYSQL_USER')
-password = os.environ.get('MYSQL_PASSWORD')
-server = os.environ.get('MYSQL_SERVER')
-database = os.environ.get('MYSQL_DATABASE')
-
-MIGRATION_DIR = 'shmelegram/migrations'
-TESTING = os.environ.get('FLASK_TESTING', '').strip() == 'True'
-
-
-class Config:
+class BaseConfig:
     DEBUG = True
-    SECRET_KEY = os.urandom(32)
-    MESSAGE_PAGE_SIZE = 50
-    if TESTING:
-        SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
-    else:
-        SQLALCHEMY_DATABASE_URI = f'mysql+mysqlconnector://{user}:{password}' \
-                                f'@{server}/{database}'
+    MIGRATION_DIR = 'shmelegram/migrations'
+    TESTING = getenv('FLASK_TESTING', '').strip() == 'True'
+    SECRET_KEY = urandom(32)
+    API_RESPONSE_SIZE = 50
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+
+class Config(BaseConfig):
+    SQLALCHEMY_DATABASE_URI = 'mysql+mysqlconnector://{}:{}@{}/{}'.format(
+        getenv('MYSQL_USER'), getenv('MYSQL_PASSWORD'), 
+        getenv('MYSQL_SERVER'), getenv('MYSQL_DATABASE')
+    )
+    REDIS_URL = 'redis://{}:{}@{}:{}/{}'.format(
+        getenv('REDIS_USER'), getenv('REDIS_PASSWORD'),
+        getenv('REDIS_HOST'), getenv('REDIS_PORT'),
+        getenv('REDIS_DATABASE_NUMBER', 0)
+    )
+    REDIS_MESSAGE_QUEUE_URL = 'redis://{}:{}@{}:{}/{}'.format(
+        getenv('REDIS_USER'), getenv('REDIS_PASSWORD'),
+        getenv('REDIS_HOST'), getenv('REDIS_PORT'),
+        getenv('REDIS_MESSAGE_QUEUE_DATABASE_NUMBER', 1)
+    )    
+
+
+class TestConfig(BaseConfig):
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    REDIS_URL = 'redis://@localhost:6379/0'
+    REDIS_MESSAGE_QUEUE_URL = 'redis://@localhost:6379/1'
+
 
 
 class ChatKind(IntEnum):
