@@ -22,10 +22,28 @@ class UserService(BaseService):
 
     @classmethod
     def get_list(cls, *, startwith: str = '', page: int = 1) -> list[JsonDict]:
-        users = User.query.filter(User.username.startswith(startwith)).offset(
-            (page - 1) * Config.API_RESPONSE_SIZE
-        ).limit(Config.API_RESPONSE_SIZE).all()
-        return cls.schema.dump(users, many=True)
+        """
+        Get list of users filtered by the start of their usernames.
+        Data is split into pages of `Config.API_RESPONSE_SIZE`.
+
+        `page` can take a special value of -1, if so, data will not be split into pages.
+        Careful! Can cause MemoryError due to big amount of data.
+
+        If `page` is bigger than max data page, returns empty list.
+
+        Args:
+            startwith (str, optional): filter by start of username. Defaults to ''.
+            page (int, optional): page of data. Defaults to 1.
+
+        Returns:
+            list[JsonDict]: list of json datas of users
+        """
+        users = User.query.filter(User.username.startswith(startwith))
+        if page != -1:
+            users = users.offset(
+                (page - 1) * Config.API_RESPONSE_SIZE
+            ).limit(Config.API_RESPONSE_SIZE)
+        return cls.schema.dump(users.all(), many=True)
 
     @classmethod
     def get_user_chats(cls, user_id: int) -> list[JsonDict]:
@@ -37,10 +55,29 @@ class ChatService(BaseService):
 
     @classmethod
     def get_list(cls, *, startwith: str = '', page: int = 1) -> list[JsonDict]:
-        chats = Chat.query.filter(Chat.title.startswith(startwith)).offset(
-            (page - 1) * Config.API_RESPONSE_SIZE
-        ).limit(Config.API_RESPONSE_SIZE).all()
-        return cls.schema.dump(chats, many=True)
+        """
+        Get list of chats filtered by the start of their titles.
+        Private chats (title = None) are not returned.
+        Data is split into pages of `Config.API_RESPONSE_SIZE`.
+
+        `page` can take a special value of -1, if so, data will not be split into pages.
+        Careful! Can cause MemoryError due to big amount of data.
+
+        If `page` is bigger than max data page, returns empty list.        
+
+        Args:
+            startwith (str, optional): filter by start of title. Defaults to ''.
+            page (int, optional): page of data. Defaults to 1.
+
+        Returns:
+            list[JsonDict]: list of json datas of chats
+        """        
+        chats = Chat.query.filter(Chat.title.startswith(startwith))
+        if page != -1:
+            chats = chats.offset(
+                (page - 1) * Config.API_RESPONSE_SIZE
+            ).limit(Config.API_RESPONSE_SIZE)
+        return cls.schema.dump(chats.all(), many=True)
 
     @classmethod
     def get_chat_messages(cls, chat_id: int, /, *, page: int = 1) -> list[JsonDict]:

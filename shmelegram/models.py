@@ -2,15 +2,19 @@ from __future__ import annotations
 
 from datetime import datetime as dt
 from hashlib import sha256
-from typing import Any, List, NoReturn, Optional
+from typing import Any, List, NoReturn, Optional, TypeVar, Type
 
 from sqlalchemy.ext.hybrid import hybrid_method, hybrid_property
 from sqlalchemy.orm import backref, load_only, relationship, validates
 from sqlalchemy.schema import CheckConstraint
-from sqlalchemy.sql import func
 
 from shmelegram import db, utils
 from shmelegram.config import ChatKind
+
+T = TypeVar('T', bound='ModelMixin')
+ModelId = TypeVar('ModelId')
+JsonDict = dict[str, Any]
+
 
 chat_membership = db.Table(
     'chat_membership', db.Model.metadata,
@@ -36,7 +40,7 @@ message_view = db.Table(
 
 class ModelMixin:
     @classmethod
-    def exists(cls, id_: int) -> bool:
+    def exists(cls, id_: ModelId) -> bool:
         """
         Check if model with this id exists
 
@@ -50,13 +54,13 @@ class ModelMixin:
             cls.query.filter(cls.id == id_).exists()
         ).scalar()
 
-    def update(self, data: dict[str, Any]) -> NoReturn:
+    def update(self, data: JsonDict) -> NoReturn:
         for k, v in data.items():
             setattr(self, k, v)
         db.session.add(self)
 
     @classmethod
-    def get(cls, id_: int) -> ModelMixin:
+    def get(cls: Type[T], id_: ModelId) -> T:
         """
         Get model by some id
 
@@ -76,7 +80,7 @@ class ModelMixin:
         return model
 
     @classmethod
-    def get_or_none(cls, id_: int) -> Optional[ModelMixin]:        
+    def get_or_none(cls: Type[T], id_: ModelId) -> Optional[T]:        
         """
         Get model by some id. If this id does not exist, return None
 
@@ -104,8 +108,8 @@ class User(db.Model, ModelMixin):
     username = db.Column(db.String(30), unique=True, nullable=False)
     password = db.Column(db.String(64), nullable=False)
     last_online = db.Column(
-        db.DateTime(), server_default=func.now(), 
-        nullable=True, onupdate=func.current_timestamp()
+        db.DateTime(), default=dt.utcnow, 
+        nullable=True, onupdate=dt.utcnow
     )  # None means online now
 
     __table_args__ = (
@@ -188,7 +192,7 @@ class Chat(db.Model, ModelMixin):
         super().__init__(kind=kind, title=title)
 
     @validates('members')
-    def validate_member(self, key, user: User):
+    def validate_member(self, key: str, user: User):
         member_limit = self.member_limit
         if self.member_count >= member_limit:
             raise ValueError(
@@ -275,10 +279,10 @@ class Message(db.Model, ModelMixin):
     )
     text = db.Column(db.String(4096), nullable=False)
     created_at = db.Column(
-        db.DateTime(), server_default=func.current_timestamp()
+        db.DateTime(), default=dt.utcnow
     )
     edited_at = db.Column(
-        db.DateTime(), onupdate=func.current_timestamp(),
+        db.DateTime(), onupdate=dt.utcnow,
         nullable=True, default=None
     )
 
@@ -292,7 +296,7 @@ class Message(db.Model, ModelMixin):
     reply_to = relationship('Message', remote_side=[id])
 
     @validates('seen_by', include_removes=True)
-    def validate_view(self, key, user: User, is_remove: bool):
+    def validate_view(self, key: str, user: User, is_remove: bool):
         if is_remove:
             raise ValueError('not allowed to remove view')
         elif user not in self.chat.members:

@@ -27,8 +27,6 @@ api = Api()
 
 os.makedirs(app.instance_path, exist_ok=True)
 
-from shmelegram import template_filters
-
 from .models import Chat, Message, User
 from .rest_api import bp as rest_bp
 from .rest_api import chat as chat_api

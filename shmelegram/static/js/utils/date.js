@@ -1,4 +1,19 @@
-function timeSince(date) {
+export function toUTC(date) {
+    return new Date(
+        date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 
+        date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()
+    );
+}
+
+export function fromUTCString(s) {
+    return new Date(Date.parse(s) - new Date().getTimezoneOffset() * 60 * 1000);
+}
+
+export function fromLocaleString(s) {
+    return new Date(Date.parse(s) + new Date().getTimezoneOffset() * 60 * 1000);
+}
+
+export function timeSince(date) {
     let seconds = Math.floor((new Date() - date) / 1000);
     let interval = seconds / 31536000;
     if (interval > 1) 
@@ -19,7 +34,7 @@ function timeSince(date) {
 }
 
 
-function diffNow(date) {
+export function diffNow(date) {
     const dt = new Date(date);
     const diff = Math.floor((toUTC(new Date()) -  new Date(date)) / 1000);
     if (diff >= 365 * 24 * 60 * 60)
@@ -33,46 +48,10 @@ function diffNow(date) {
 }
 
 
-function getDateGroupTime(unixTimestamp) {
+export function getDateGroupTime(unixTimestamp) {
     let date = new Date(unixTimestamp);
     let seconds = Math.floor((new Date() - date) / 1000);
     if (seconds / (2592000 * 3) > 1) 
         return strftime("%B %o, %Y", date);
     return strftime("%B %o", date);
-}
-
-
-function getGlobalState() {
-    return JSON.parse(localStorage.getItem(STORAGE_GLOBAL_STATE_NAME));
-}
-
-function setGlobalState(state) {
-    localStorage.setItem(STORAGE_GLOBAL_STATE_NAME, JSON.stringify(state));
-}
-
-function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-}
-
-
-function ordinalLast(string) {
-    return string.charCodeAt(0) % 10;
-}
-
-
-function toUTC(date) {
-    return new Date(
-        date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 
-        date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()
-    );    
-}
-
-function fromUTCString(s) {
-    return new Date(Date.parse(s) - new Date().getTimezoneOffset() * 60 * 1000);
-}
-
-function fromLocaleString(params) {
-    return new Date(Date.parse(s) + new Date().getTimezoneOffset() * 60 * 1000);
 }
