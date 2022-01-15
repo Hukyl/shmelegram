@@ -1,13 +1,34 @@
+"""
+This module introduces authentication view functions
+Defines following functions:
+    - `logged_in`, view decorator
+    - `register`
+    - `login`
+    - `load_user`, before request event handler
+"""
+
+from typing import Callable, NoReturn
 from functools import wraps
 
-from flask import (Blueprint, flash, g, redirect, render_template, request,
-                   session, url_for)
+from flask import (
+    Blueprint, flash, g, redirect, render_template,
+    request, session, url_for
+)
+from sqlalchemy.exc import SQLAlchemyError
 
 from shmelegram import utils
 from shmelegram.models import User
 
 
-def logged_in(func):
+def logged_in(func: Callable):
+    """
+    View decorator for checking if user is logged in.
+    If user is not logged in, redirects to login page.
+    Returns same output as the decorated view.
+
+    Args:
+        func (Callable): view function
+    """
     @wraps(func)
     def inner(*args, **kwargs):
         if not session.get('user_id'):
@@ -21,6 +42,10 @@ bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 @bp.route('/register', methods=('GET', 'POST'))
 def register():
+    """
+    Register view.
+    GET request - for template, POST - for sending data.
+    """
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -35,7 +60,7 @@ def register():
             try:
                 user = User(username=username, password=password)
                 user.save()
-            except Exception:
+            except SQLAlchemyError:
                 error = 'Unexpected error occurred, try again later'
             else:
                 flash('User successfully created', 'success')
@@ -46,6 +71,10 @@ def register():
 
 @bp.route('/login', methods=('GET', 'POST'))
 def login():
+    """
+    Login view.
+    GET request - for template, POST - for data sending.
+    """
     if request.method == "POST":
         username = request.form['username']
         password = request.form['password']
@@ -67,7 +96,14 @@ def login():
 
 
 @bp.before_app_request
-def load_user():
-    user_id = session.get("user_id") 
+def load_user() -> NoReturn:
+    """
+    If request session has 'user_id' value, sets `g.user` to user model instance.
+
+    Returns:
+        NoReturn
+    """
+    # pylint: disable=assigning-non-slot
+    user_id = session.get("user_id")
     if user_id:
         g.user = User.get(user_id)

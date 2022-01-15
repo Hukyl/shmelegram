@@ -656,8 +656,8 @@ export class ChatInfoDisplay {
     }
 
     removeUser(userId) {
-        clearInterval(this.#intervalIds[user.id]);
-        delete this.#intervalIds[user.id];
+        clearInterval(this.#intervalIds[userId]);
+        delete this.#intervalIds[userId];
         $(
             `#right-section div.members div.member[data-user-id=${userId}]`
         ).remove()

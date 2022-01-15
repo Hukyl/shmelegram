@@ -1,3 +1,8 @@
+"""
+Initializing file containing Flask, sqlalchemy, socketio, flask_migrate and flask_restful instances.
+"""
+
+# pylint: disable=wrong-import-position
 import os
 
 import eventlet
@@ -27,6 +32,7 @@ api = Api()
 
 os.makedirs(app.instance_path, exist_ok=True)
 
+
 from .models import Chat, Message, User
 from .rest_api import bp as rest_bp
 from .rest_api import chat as chat_api
@@ -44,5 +50,6 @@ app.register_blueprint(rest_bp)
 
 @app.after_request
 def flush_db(request):
+    """Flush db on end of each flask request, no matter what errors occurred"""
     db.session.flush()
     return request

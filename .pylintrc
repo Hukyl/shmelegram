@@ -1,0 +1,9 @@
+[MASTER]
+
+# List of plugins (as comma separated values of python modules names) to load,
+# usually to register additional checkers.
+load-plugins=pylint_flask, pylint_flask_sqlalchemy
+
+disable=consider-using-f-string
+
+ignored-classes=scoped_session
