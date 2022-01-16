@@ -23,22 +23,17 @@ class ChatBaseApi(Resource):
 
     Class attributes:
         service (Type[ChatSerice]): service for database interactions.
+        NOT_EXISTS_MESSAGE (str)
+        EMPTY_MESSAGE (JsonDict)
     """
     service = ChatService
+    NOT_EXISTS_MESSAGE = {"error": "Chat with such id does not exist"}
+    EMPTY_MESSAGE = {'success': True}
 
 
 @api.resource('/chats/<int:chat_id>')
 class ChatApi(ChatBaseApi):
-    """
-    API class for chat interactions.
-
-    Class attributes:
-        NOT_EXISTS_MESSAGE (str)
-        EMPTY_MESSAGE (JsonDict)
-    """
-
-    NOT_EXISTS_MESSAGE = "Chat {} does not exist"
-    EMPTY_MESSAGE = {'success': True}
+    """API class for chat interactions."""
 
     def get(self, chat_id: int) -> tuple[JsonDict, StatusCode]:
         """
@@ -54,45 +49,8 @@ class ChatApi(ChatBaseApi):
         try:
             chat = Chat.get(chat_id)
         except ValueError:
-            return self.NOT_EXISTS_MESSAGE.format(chat_id), StatusCode(404)
+            return self.NOT_EXISTS_MESSAGE, StatusCode(404)
         return ChatService.to_json(chat), StatusCode(200)
-
-    def post(self, chat_id):
-        """
-        POST request handler.
-        Update chat by giver id with json data.
-
-        If such chat does not exist, return not exists message and 404 status code.
-        Otherwise return new chat json data and 202 status code.
-
-        Returns:
-            tuple[JsonDict, StatusCode]
-        """
-        json = request.json or {}
-        try:
-            chat = Chat.get(chat_id)
-        except ValueError:
-            return self.NOT_EXISTS_MESSAGE.format(chat_id), StatusCode(404)
-        chat.update(json)
-        return ChatService.to_json(chat), StatusCode(202)
-
-    def delete(self, chat_id):
-        """
-        DELETE request handler.
-        Delete chat by giver id.
-
-        If such chat does not exist, return not exists message and 404 status code.
-        Otherwise delete chat, and then return success json and 202 status code.
-
-        Returns:
-            tuple[JsonDict, StatusCode]
-        """
-        try:
-            chat = Chat.get(chat_id)
-        except ValueError:
-            return self.NOT_EXISTS_MESSAGE.format(chat_id), StatusCode(404)
-        chat.delete()
-        return self.EMPTY_MESSAGE, StatusCode(202)
 
 
 @api.resource('/chats')

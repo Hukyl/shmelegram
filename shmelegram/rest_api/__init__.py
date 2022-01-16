@@ -5,7 +5,6 @@ Defines following classes:
     - `user/UserListApi`
     - `user/UserApi`
     - `user/UserChatListApi`
-    - `user/UserChatApi`
     - `user/UnreadMessagesUserChatApi`
     - `chat/ChatBaseApi`
     - `chat/ChatApi`

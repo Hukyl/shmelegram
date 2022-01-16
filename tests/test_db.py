@@ -20,7 +20,7 @@ class DatabaseTestBase(unittest.TestCase):
         db.drop_all()
 
 
-class TestModelMixin(DatabaseTestBase):
+class ModelMixinTestCase(DatabaseTestBase):
     """
     Test `ModelMixin` mixin.
 
@@ -87,7 +87,7 @@ class TestModelMixin(DatabaseTestBase):
         self.assertFalse(User.exists(-1))
 
 
-class TestChats(DatabaseTestBase):
+class ChatTestCase(DatabaseTestBase):
     def test_invalid_initialization(self):
         """
         Test if raises errors if different chat types are initialized
@@ -144,7 +144,7 @@ class TestChats(DatabaseTestBase):
         ).scalar())
 
 
-class TestMessages(DatabaseTestBase):
+class MessageTestCase(DatabaseTestBase):
     @parameterized.expand([
         ('private', Chat(kind=ChatKind.PRIVATE)),
         ('group', Chat(kind=ChatKind.GROUP, title='some title'))
@@ -240,7 +240,7 @@ class TestMessages(DatabaseTestBase):
         self.assertEqual(len(Chat.startwith('b')), 0)
 
 
-class TestUsers(DatabaseTestBase):
+class UserTestCase(DatabaseTestBase):
     @parameterized.expand([
         ('hello', True), ('ok', False), ('hello_one', False),
         ('hello1', True), ('ok123', True), ('ok12', False),
@@ -265,9 +265,9 @@ class TestUsers(DatabaseTestBase):
 
     def test_startwith(self):
         db.session.add_all([
-            User(username='admin', password='TesT123.-wow'), 
+            User(username='admin', password='TesT123.-wow'),
             User(username='admire', password='TesT123.-wow'),
-            User(username='random', password='TesT123.-wow'), 
+            User(username='random', password='TesT123.-wow'),
         ])
         self.assertEqual(len(User.startwith()), 3)
         self.assertEqual(len(User.startwith('adm')), 2)

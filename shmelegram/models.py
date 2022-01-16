@@ -25,7 +25,7 @@ from sqlalchemy.schema import CheckConstraint
 from flask_sqlalchemy import BaseQuery
 
 from shmelegram import db, utils
-from shmelegram.config import ChatKind
+from shmelegram.config import ChatKind, BaseConfig
 
 ModelType = TypeVar('ModelType', bound='ModelMixin')
 ModelId = TypeVar('ModelId')
@@ -36,9 +36,10 @@ JsonDict = dict[str, Any]
 def set_sqlite_pragma(dbapi_connection, connection_record):
     """Enable foreign keys for SQLite testing database."""
     # pylint: disable=unused-argument
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+    if BaseConfig.TESTING:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 chat_membership = Table(
