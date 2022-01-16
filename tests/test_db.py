@@ -73,7 +73,7 @@ class TestModelMixin(DatabaseTestBase):
         user = User(username='admin', password='TesT123.-wow')
         self.assertIsNone(user.id)
         with self.assertRaises(ValueError):
-            User.get(user.id)
+            User.get(-1)
         db.session.add(user)
         db.session.flush()
         self.assertIsNotNone(user.id)
@@ -187,3 +187,89 @@ class TestMessages(DatabaseTestBase):
         self.assertFalse(db.session.query(
             Message.query.filter(Message.id == message.id).exists()
         ).scalar())
+
+    @parameterized.expand([
+        ('private', Chat(kind=ChatKind.PRIVATE)),
+        ('group', Chat(kind=ChatKind.GROUP, title='some title'))
+    ])
+    def test_member_limit(self, name: str, chat: Chat):
+        for i in range(chat.member_limit):
+            user = User(username=f'member{i}', password='TesT123.-wow')
+            db.session.add(user)
+            chat.add_member(user)
+        user = User(username='wronguser', password='TesT123.-wow')
+        db.session.add(user)
+        with self.assertRaises(ValueError):
+            chat.add_member(user)
+
+    @parameterized.expand([
+        ('private', Chat(kind=ChatKind.PRIVATE)),
+        ('group', Chat(kind=ChatKind.GROUP, title='some title'))
+    ])
+    def test_unread_messages(self, name: str, chat: Chat):
+        user = User(username='admin', password='TesT123.-wow')
+        db.session.add(user)
+        with self.assertRaises(ValueError):
+            chat.get_unread_messages(user)
+        chat.members.append(user)
+        self.assertEqual(len(chat.get_unread_messages(user)), 0)
+        msg1 = Message(from_user=user, chat=chat, text='1')
+        db.session.add(msg1)
+        db.session.flush()
+        self.assertEqual(len(chat.get_unread_messages(user)), 1)
+        msg1.seen_by.append(user)
+        self.assertEqual(len(chat.get_unread_messages(user)), 0)
+
+    def test_get_by_title(self):
+        chat = Chat(kind=ChatKind.GROUP, title='some title')
+        db.session.add(chat)
+        db.session.flush()
+        self.assertIsInstance(Chat.get_by_title('some title'), Chat)
+        with self.assertRaises(ValueError):
+            Chat.get_by_title('random')
+
+    def test_startwith(self):
+        chat1 = Chat(kind=ChatKind.GROUP, title='some title')
+        chat2 = Chat(kind=ChatKind.GROUP, title='another title')
+        chat3 = Chat(kind=ChatKind.PRIVATE)
+        db.session.add_all([chat1, chat2, chat3])
+        db.session.flush()
+        self.assertEqual(len(Chat.startwith()), 2)
+        self.assertEqual(len(Chat.startwith('s')), 1)
+        self.assertEqual(len(Chat.startwith('a')), 1)
+        self.assertEqual(len(Chat.startwith('b')), 0)
+
+
+class TestUsers(DatabaseTestBase):
+    @parameterized.expand([
+        ('hello', True), ('ok', False), ('hello_one', False),
+        ('hello1', True), ('ok123', True), ('ok12', False),
+        ('', False), ('a' * 30, False), ('a' * 29, True)
+    ])
+    def test_validate_username(self, username: str, is_ok: bool):
+        if is_ok:
+            try:
+                User(username=username, password='TesT.-123')
+            except ValueError:
+                self.fail(
+                    f"User initialization raised ValueError with {username=!r}"
+                )
+        else:
+            with self.assertRaises(ValueError):
+                User(username=username, password='TesT.-123')
+
+    def test_username_exists(self):
+        db.session.add(User(username='admin', password='TesT123.-wow'))
+        self.assertTrue(User.username_exists('admin'))
+        self.assertFalse(User.username_exists('random'))
+
+    def test_startwith(self):
+        db.session.add_all([
+            User(username='admin', password='TesT123.-wow'), 
+            User(username='admire', password='TesT123.-wow'),
+            User(username='random', password='TesT123.-wow'), 
+        ])
+        self.assertEqual(len(User.startwith()), 3)
+        self.assertEqual(len(User.startwith('adm')), 2)
+        self.assertEqual(len(User.startwith('r')), 1)
+        self.assertEqual(len(User.startwith('u')), 0)
