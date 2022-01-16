@@ -15,8 +15,10 @@ from hashlib import sha256
 from typing import Any, NoReturn, Optional, TypeVar, Type, Union
 
 from sqlalchemy import (
-    Table, Column, Integer, ForeignKey, DateTime, String, Enum, Boolean
+    Table, Column, Integer, ForeignKey, DateTime,
+    String, Enum, Boolean, desc, event
 )
+from sqlalchemy.engine import Engine
 from sqlalchemy.ext.hybrid import hybrid_method, hybrid_property
 from sqlalchemy.orm import backref, load_only, relationship, validates
 from sqlalchemy.schema import CheckConstraint
@@ -28,6 +30,15 @@ from shmelegram.config import ChatKind
 ModelType = TypeVar('ModelType', bound='ModelMixin')
 ModelId = TypeVar('ModelId')
 JsonDict = dict[str, Any]
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Enable foreign keys for SQLite testing database."""
+    # pylint: disable=unused-argument
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 chat_membership = Table(
@@ -289,6 +300,92 @@ class User(db.Model, ModelMixin):
         return sha256(value.encode('utf-8')).hexdigest()
 
 
+class Message(db.Model, ModelMixin):
+    """
+    Model representing message.
+
+    Arguments:
+        chat (Chat): chat which message belongs to
+        from_user (User): sender user
+        is_service (bool, optionsl), defaults to False.
+        text (str): message text
+        reply_to (Message): message which this message is reply to
+        created_at (datetime, optional), defaults to `datetime.utcnow()`
+        edited_at (datetime, optional), defaults to None
+    """
+    __tablename__ = 'message'
+
+    id = Column(Integer, primary_key=True)
+    from_user_id = Column(Integer, ForeignKey('user.id'))
+    chat_id = Column(
+        Integer, ForeignKey('chat.id', ondelete="CASCADE")
+    )
+    is_service = Column(Boolean, nullable=False, default=False)
+    reply_to_id = Column(
+        Integer, ForeignKey('message.id', ondelete="SET NULL")
+    )
+    text = Column(String(4096), nullable=False)
+    created_at = Column(
+        DateTime(), default=dt.utcnow
+    )
+    edited_at = Column(
+        DateTime(), onupdate=dt.utcnow,
+        nullable=True, default=None
+    )
+
+    from_user = relationship(
+        'User', uselist=False, foreign_keys=[from_user_id]
+    )
+    seen_by = relationship(
+        'User', secondary=message_view, lazy='dynamic',
+        passive_deletes=True,
+    )
+    reply_to = relationship('Message', remote_side=[id])
+
+    @validates('seen_by', include_removes=True)
+    def validate_view(self, key: str, user: User, is_remove: bool) -> User:
+        """
+        Validate view addition. Fires on every view addition or removal.
+
+        Args:
+            key (str): 'seen_by'
+            user (User): user to add the view from
+            is_remove (bool): whether this call is for removal
+
+        Raises:
+            ValueError: is_remove is True
+            ValueError: user is not member of message's chat
+
+        Returns:
+            User: user that was validate. Same user as the one passed in.
+        """
+        # pylint: disable=unused-argument
+        if is_remove:
+            raise ValueError('not allowed to remove view')
+        if user not in self.chat.members:
+            raise ValueError('cannot add view by non-member user')
+        return user
+
+    @hybrid_method
+    def add_view(self, user: User) -> True:
+        """
+        Add view to the message by user.
+
+        Args:
+            user (User): user to add the view from
+
+        Returns:
+            True
+        """
+        self.seen_by.append(user)
+        return True
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + (
+            f"(id={self.id}, chat={self.chat!r}, from_user={self.from_user!r})"
+        )
+
+
 class Chat(db.Model, ModelMixin):
     """
     Model representing chat.
@@ -312,14 +409,14 @@ class Chat(db.Model, ModelMixin):
     )
     messages = relationship(
         'Message', lazy='dynamic', backref='chat',
-        cascade="all, delete", passive_deletes=True,
-        order_by="-Message.created_at"
+        cascade="all,delete,delete-orphan",
+        passive_deletes=True, order_by=desc(Message.created_at)
     )
 
     def __init__(self, *, kind: ChatKind, title: str = None):
         if kind is ChatKind.PRIVATE and title:
             raise ValueError('unable to set title in private chat')
-        elif kind is ChatKind.GROUP and not title:
+        if kind is ChatKind.GROUP and not title:
             raise ValueError('unable to create non-private chat without title')
         super().__init__(kind=kind, title=title)
 
@@ -477,90 +574,4 @@ class Chat(db.Model, ModelMixin):
     def __repr__(self) -> str:
         return self.__class__.__name__ + (
             f"(id={self.id}, kind={self.kind.name})"
-        )
-
-
-class Message(db.Model, ModelMixin):
-    """
-    Model representing message.
-
-    Arguments:
-        chat (Chat): chat which message belongs to
-        from_user (User): sender user
-        is_service (bool, optionsl), defaults to False.
-        text (str): message text
-        reply_to (Message): message which this message is reply to
-        created_at (datetime, optional), defaults to `datetime.utcnow()`
-        edited_at (datetime, optional), defaults to None
-    """
-    __tablename__ = 'message'
-
-    id = Column(Integer, primary_key=True)
-    from_user_id = Column(Integer, ForeignKey('user.id'))
-    chat_id = Column(
-        Integer, ForeignKey('chat.id', ondelete="CASCADE")
-    )
-    is_service = Column(Boolean, nullable=False, default=False)
-    reply_to_id = Column(
-        Integer, ForeignKey('message.id', ondelete="SET NULL")
-    )
-    text = Column(String(4096), nullable=False)
-    created_at = Column(
-        DateTime(), default=dt.utcnow
-    )
-    edited_at = Column(
-        DateTime(), onupdate=dt.utcnow,
-        nullable=True, default=None
-    )
-
-    from_user = relationship(
-        'User', uselist=False, foreign_keys=[from_user_id]
-    )
-    seen_by = relationship(
-        'User', secondary=message_view, lazy='dynamic',
-        passive_deletes=True,
-    )
-    reply_to = relationship('Message', remote_side=[id])
-
-    @validates('seen_by', include_removes=True)
-    def validate_view(self, key: str, user: User, is_remove: bool) -> User:
-        """
-        Validate view addition. Fires on every view addition or removal.
-
-        Args:
-            key (str): 'seen_by'
-            user (User): user to add the view from
-            is_remove (bool): whether this call is for removal
-
-        Raises:
-            ValueError: is_remove is True
-            ValueError: user is not member of message's chat
-
-        Returns:
-            User: user that was validate. Same user as the one passed in.
-        """
-        # pylint: disable=unused-argument
-        if is_remove:
-            raise ValueError('not allowed to remove view')
-        if user not in self.chat.members:
-            raise ValueError('cannot add view by non-member user')
-        return user
-
-    @hybrid_method
-    def add_view(self, user: User) -> True:
-        """
-        Add view to the message by user.
-
-        Args:
-            user (User): user to add the view from
-
-        Returns:
-            True
-        """
-        self.seen_by.append(user)
-        return True
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + (
-            f"(id={self.id}, chat={self.chat!r}, from_user={self.from_user!r})"
         )

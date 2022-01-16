@@ -6,6 +6,8 @@ Defines following classes:
     - `MessageSchema`
 """
 
+# pylint: disable=too-few-public-methods
+
 from marshmallow import fields
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema
 

@@ -10,4 +10,4 @@ install:
   - poetry install
 
 script:
-  - poetry run pytest
+  - poetry run python -m unittest dicover tests/
