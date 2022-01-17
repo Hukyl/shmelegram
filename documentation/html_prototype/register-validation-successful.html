@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!-- saved from url=(0035)http://127.0.0.1:5000/auth/register -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="icon" href="http://127.0.0.1:5000/static/images/favicon.ico">
+	<title>Shmelegram</title>
+	<link rel="stylesheet" type="text/css" href="./register-validation-successful_files/bootstrap.min.css">
+	<link rel="stylesheet" type="text/css" href="./register-validation-successful_files/base.css">
+	<link rel="stylesheet" href="./register-validation-successful_files/auth.css">
+</head>
+<body cz-shortcut-listen="true">
+	
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <a class="navbar-brand nav-link" href="http://127.0.0.1:5000/home/">
+    <img src="./register-validation-successful_files/logo-nobg.png" height="60px" alt="Shmelegram logo">
+    <span class=".d-none .d-sm-block .d-sm-none .d-md-block">Shmelegram</span>
+  </a>
+  <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent" aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+  <div class="collapse navbar-collapse" id="navContent">
+    <div class="navbar-nav">
+      <a class="nav-link " aria-current="page" href="http://127.0.0.1:5000/home/">
+        Home
+      </a>
+      <a class="nav-link" href="http://127.0.0.1:5000/">Chat</a>
+      <a class="nav-link " href="http://127.0.0.1:5000/home/about">
+        About
+      </a> 
+      <div class="nav-item dropdown">
+        <a class="nav-link active dropdown-toggle" href="http://127.0.0.1:5000/auth/register#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+          Authentication
+        </a>
+        <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+          <a class="dropdown-item" href="http://127.0.0.1:5000/auth/login">Log in</a>
+          <a class="dropdown-item" href="http://127.0.0.1:5000/auth/register">Register</a>
+          
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+<div class="container-fluid">
+    
+        
+    
+</div>
+<form id="main" method="post" action="http://127.0.0.1:5000/auth/register" class="row col-3 bg-dark text-light" novalidate="" autocomplete="off">
+    <div class="col-12 justify-content-center" id="form-name">
+        Register
+    </div>
+    <div class="col-12">
+        <label for="username" class="form-label">Username</label>
+        <input type="text" name="username" class="form-control is-valid" id="username" placeholder="Your username..." required="" value="" aria-describedby="usernameHelp">
+        <small id="usernameHelp" class="form-text text-muted text-white">
+            Only letters, digits and punctuation. From 5 to 29 chars.
+        </small>        
+    </div>
+    <div class="col-12">
+        <label for="password" class="form-label">Password</label>
+        <input type="text" name="password" class="form-control is-valid" id="password" placeholder="Your password..." required="" aria-describedby="passwordHelp">
+        <small id="passwordHelp" class="form-text text-muted text-white">
+            At least one upper, one lower, one punctuation and one digit. From 7 to 14 chars.
+        </small>  
+    </div>
+    <div id="submit-div">
+        <input type="submit" value="Submit" class="btn btn-primary btn-lg" id="submit">
+    </div>
+
+
+	<script type="text/javascript" src="./register-validation-successful_files/jquery-3.6.0.min.js.Без названия"></script>
+	<script type="text/javascript" src="./register-validation-successful_files/bootstrap.bundle.min.js.Без названия"></script>
+	<script type="text/javascript" src="./register-validation-successful_files/socket.io.min.js.Без названия"></script>
+	
+<script type="text/javascript" src="./register-validation-successful_files/register.js.Без названия"></script>
+
+
+</form></body></html>

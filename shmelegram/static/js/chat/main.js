@@ -265,7 +265,6 @@ $('#add-member').click(function() {
         GLOBAL.activeChatDisplay.chat
     )
     dialog.success(function (event, userId) {
-        debugger;
         GLOBAL.socket.emit('join_chat', {
             user_id: userId, chat_id: dialog.chat.id
         });
