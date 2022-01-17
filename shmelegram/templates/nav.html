@@ -39,6 +39,9 @@
         <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
           <a class="dropdown-item" href="{{ url_for('auth.login') }}">Log in</a>
           <a class="dropdown-item" href="{{ url_for('auth.register') }}">Register</a>
+          {% if session.user_id %}
+            <a class="dropdown-item" href="{{ url_for('auth.logout') }}">Log out</a>
+          {% endif %}
         </div>
       </div>
     </div>

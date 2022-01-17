@@ -193,8 +193,8 @@ def join_chat(data: JsonDict):
         to=chat_id, skip_sid=sid
     )
     send(MessageService.to_json(message), to=chat_id)
-    join_room(chat_id, sid=sid)
     emit('add_chat', ChatService.to_json(chat), to=sid)
+    join_room(chat_id, sid=sid)
 
 
 @socketio.event

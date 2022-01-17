@@ -442,7 +442,7 @@ export class ChatListDisplay {
         info.appendChild(subtitle);
         chatDiv.appendChild(status);
         chatDiv.appendChild(info);
-        return chatDiv;        
+        return chatDiv;
     }
 
     static createChat(chatId) {
@@ -466,7 +466,7 @@ export class ChatListDisplay {
         ).innerText = lastMessage ? diffNow(
             fromUTCString(lastMessage.created_at)
         ) : '';
-        if (chat.type === 'group' && !lastMessage?.is_service)
+        if (chat.type === 'group' && lastMessage && !lastMessage.is_service)
             chatDiv.querySelector('span.sender-name').innerText = (
                 lastMessage?.from_user === GLOBAL.state.currentUserId ? 
                 'You' : GLOBAL.state.getUser(lastMessage.from_user).username

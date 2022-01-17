@@ -76,7 +76,7 @@ $(document).ready(async function() {
         );
         if (chatData.type === 'private') {
             const companionUserId = chatData.members.find(
-                el => el !== this.currentUserId
+                el => el !== GLOBAL.state.currentUserId
             );
             let companionUser = GLOBAL.state.getUser(companionUserId);
             if (!companionUser) {
@@ -265,6 +265,7 @@ $('#add-member').click(function() {
         GLOBAL.activeChatDisplay.chat
     )
     dialog.success(function (event, userId) {
+        debugger;
         GLOBAL.socket.emit('join_chat', {
             user_id: userId, chat_id: dialog.chat.id
         });

@@ -95,6 +95,16 @@ def login():
     return render_template('auth/login.html', form=request.form, active_page='auth')
 
 
+@bp.route('/logout', methods=('GET', ))
+def logout():
+    """
+    Logout view.
+    Remove 'user_id' from session and redirect to login.
+    """
+    session.pop('user_id', None)
+    return redirect(url_for('auth.login'))
+
+
 @bp.before_app_request
 def load_user() -> NoReturn:
     """

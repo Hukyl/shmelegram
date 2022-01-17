@@ -24,10 +24,10 @@
           <li><button 
             class="dropdown-item" id="create-private"
             ><i class="bi bi-chat-left-fill"></i>Send message</button></li>
-          <li>
-            <hr class="dropdown-divider">
-          </li>
-          <li><button class="dropdown-item"><i class="bi bi-bug-fill"></i>Report wasp</button></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a 
+            class="dropdown-item" href="{{ url_for('auth.logout') }}"
+            ><i class="bi bi-box-arrow-left"></i>Log out</a></li>
         </ul>
       </div>
       <div id="search-wrapper">
