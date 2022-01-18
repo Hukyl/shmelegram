@@ -12,7 +12,7 @@ from flask_restful import Api
 from flask_socketio import SocketIO
 from flask_sqlalchemy import SQLAlchemy
 
-from shmelegram.utils.redis_client import RedisClient
+from shmelegram.utils.redis_client import RedisClient, FakeRedisClient
 from shmelegram.config import BaseConfig, TestConfig, Config
 
 eventlet.monkey_patch()
@@ -24,7 +24,7 @@ db = SQLAlchemy(app, session_options={'autocommit': True})
 migrate = Migrate(app, db, directory=BaseConfig.MIGRATION_DIR)
 redis_client = RedisClient.from_url(
     app.config['REDIS_URL'], decode_responses=True
-)
+) if not app.config['TESTING'] else FakeRedisClient(app.config['REDIS_URL'])
 
 socketio = SocketIO(app, engineio_logger=True, logger=True)
 
