@@ -7,6 +7,8 @@ Defines following classes:
     - `ChatKind`, chat kinds enumeration
 """
 
+# pylint: disable=too-few-public-methods
+
 from os import getenv, urandom
 from enum import IntEnum
 
