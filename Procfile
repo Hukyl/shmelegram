@@ -1,0 +1,1 @@
+web: gunicorn -k eventlet shmelegram:app
